@@ -47,7 +47,7 @@ def unique_path(dest):
 
 def login_page(err=""):
     return """<!doctype html><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>fileweb</title><style>
+<title>fileweb</title><link rel=icon type=image/png sizes=32x32 href=/favicon-32.png><style>
 :root{--primary:#0066cc;--ink:#1d1d1f;--muted:#7a7a7a;--parchment:#f5f5f7}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{font-family:system-ui,-apple-system,"SF Pro Text",sans-serif;font-size:17px;letter-spacing:-.374px;
@@ -97,6 +97,14 @@ class Handler(BaseHTTPRequestHandler):
         q = parse_qs(u.query)
         if u.path == "/login":
             return self._send(200, login_page())
+        # 图标白名单在认证之前：iOS 抓取主屏幕图标时不带 cookie
+        icons = {"/favicon.ico": ("assets/favicon.ico", "image/x-icon"),
+                 "/favicon-32.png": ("assets/favicon-32.png", "image/png"),
+                 "/favicon-16.png": ("assets/favicon-16.png", "image/png"),
+                 "/apple-touch-icon.png": ("assets/apple-touch-icon.png", "image/png")}
+        if u.path in icons:
+            fn, ct = icons[u.path]
+            return self._send(200, (HERE / fn).read_bytes(), ct, [("Cache-Control", "public, max-age=86400")])
         if not self._authed():
             return self._send(302, "", "text/plain", [("Location", "/login")])
 
