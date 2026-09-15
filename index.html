@@ -20,13 +20,12 @@
     backdrop-filter: saturate(180%) blur(20px);
     display: flex; align-items: center; height: 52px;
     padding: calc(env(safe-area-inset-top) + 0px) 16px 0; border-bottom: 1px solid var(--hairline); }
-  .nav .back { color: var(--primary); font-size: 17px; background: none; border: 0; padding: 12px 8px 12px 0;
-    margin-left: -8px; visibility: hidden; }
-  .nav .back:active { opacity: .4; }
+  .nav .navbtn { width: 44px; height: 44px; margin: 0 -8px; background: none; border: 0; padding: 0;
+    color: var(--primary); display: flex; align-items: center; justify-content: center; }
+  .nav .navbtn:active:not(:disabled) { opacity: .4; }
+  .nav .navbtn:disabled { color: #c7c7cc; }
   .nav .title { flex: 1; text-align: center; font-size: 17px; font-weight: 600; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
-  .nav .back + .title { margin-left: -58px; }  /* 视觉居中 */
-  .nav .spacer { width: 58px; flex: none; }
 
   /* ---- 大标题 ---- */
   h1 { font-family: system-ui, -apple-system, "SF Pro Display", sans-serif;
@@ -75,9 +74,9 @@
 <body>
 
 <div class="nav" id="listnav">
-  <button class="back" id="back">‹ 返回</button>
+  <button class="navbtn" id="back" aria-label="后退" disabled></button>
   <div class="title" id="title">fileweb</div>
-  <div class="spacer"></div>
+  <button class="navbtn" id="fwd" aria-label="前进" disabled></button>
 </div>
 <h1 id="bigtitle">fileweb</h1>
 <div class="group" id="group"></div>
@@ -100,7 +99,18 @@ const SVG_FOLDER = '<svg width="26" height="26" viewBox="0 0 24 24"><path fill="
 const SVG_DOC = '<svg width="24" height="24" viewBox="0 0 24 24"><path fill="#98989d" opacity=".35" d="M6 3.5A1.5 1.5 0 0 1 7.5 2H14l4.5 4.5V20a1.5 1.5 0 0 1-1.5 1.5H7.5A1.5 1.5 0 0 1 6 20V3.5z"/><path fill="none" stroke="#98989d" stroke-width="1.4" d="M7 2.7h6.6L17.8 6.9V19.8a1.5 1.5 0 0 1-1.5 1.5H7.7a1.5 1.5 0 0 1-1.5-1.5V4.2A1.5 1.5 0 0 1 7 2.7z"/><path stroke="#98989d" stroke-width="1.2" stroke-linecap="round" fill="none" d="M9 12h6M9 15h6M9 9h3"/></svg>';
 const SVG_CHEV = '<svg class="chev" width="8" height="14" viewBox="0 0 8 14"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M1.5 1.5 6.5 7l-5 5.5"/></svg>';
 
+const SVG_CHEV_L = '<svg width="13" height="22" viewBox="0 0 13 22"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M11 2 2.5 11 11 20"/></svg>';
+const SVG_CHEV_R = '<svg width="13" height="22" viewBox="0 0 13 22"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M2 2l8.5 9L2 20"/></svg>';
+document.getElementById("back").innerHTML = SVG_CHEV_L;
+document.getElementById("fwd").innerHTML = SVG_CHEV_R;
+
 let cur = "", curFile = "";
+let hist = [""], hidx = 0;   // 浏览器式历史栈：进新目录 push，后退/前进移动指针
+
+function updateNav() {
+  document.getElementById("back").disabled = hidx <= 0;
+  document.getElementById("fwd").disabled = hidx >= hist.length - 1;
+}
 
 async function api(url, opt) {
   const r = await fetch(url, opt);
@@ -111,14 +121,13 @@ async function api(url, opt) {
 const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const rel = (p, n) => p ? p + "/" + n : n;
 
-async function list(p) {
-  cur = p;
+async function render(p) {
   const d = await api("/api/list?path=" + encodeURIComponent(p));
   if (!d || d.error) { if (d && d.error) toast(d.error); return; }
+  cur = p;
   const name = p ? p.split("/").pop() : "fileweb";
   document.getElementById("title").textContent = name;
   document.getElementById("bigtitle").textContent = name;
-  document.getElementById("back").style.visibility = p ? "visible" : "hidden";
   const g = document.getElementById("group");
   g.innerHTML = "";
   const es = d.entries;
@@ -130,10 +139,18 @@ async function list(p) {
       `<span class="name">${esc(e.name)}</span>` +
       (e.type === "file" ? `<span class="meta">${e.mtime}${e.size ? " · " + e.size : ""}</span>` : "") +
       SVG_CHEV;
-    row.onclick = () => e.type === "dir" ? list(rel(p, e.name)) : open(rel(p, e.name), e.name);
+    row.onclick = () => e.type === "dir" ? navigate(rel(p, e.name)) : open(rel(p, e.name), e.name);
     g.appendChild(row);
   }
+  updateNav();
   scrollTo(0, 0);
+}
+
+function navigate(p) {
+  if (p === hist[hidx]) return;
+  hist = hist.slice(0, hidx + 1);   // 进入新目录，清掉前进分支
+  hist.push(p); hidx++;
+  render(p);
 }
 
 async function open(path, name) {
@@ -164,11 +181,13 @@ function toast(m) {
 }
 
 document.getElementById("back").onclick = () => {
-  const i = cur.lastIndexOf("/");
-  list(i > 0 ? cur.slice(0, i) : "");
+  if (hidx > 0) { hidx--; render(hist[hidx]); }
+};
+document.getElementById("fwd").onclick = () => {
+  if (hidx < hist.length - 1) { hidx++; render(hist[hidx]); }
 };
 
-list("");
+render("");
 </script>
 </body>
 </html>
