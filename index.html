@@ -61,6 +61,14 @@
     letter-spacing: 0; white-space: pre; overflow: auto; resize: none; }
   textarea:focus { outline: none; }
 
+  /* ---- 上传悬浮按钮 ---- */
+  .fab { position: fixed; right: 20px; bottom: calc(env(safe-area-inset-bottom) + 28px);
+    width: 54px; height: 54px; border-radius: 9999px; border: 0; background: var(--primary);
+    color: #fff; display: flex; align-items: center; justify-content: center; z-index: 15;
+    box-shadow: 0 2px 12px rgba(0,102,204,.35); }
+  .fab:active { transform: scale(.95); }
+  .fab:disabled { opacity: .5; }
+
   /* ---- toast ---- */
   #toast { position: fixed; left: 50%; transform: translateX(-50%) translateY(8px); bottom: 48px;
     background: rgba(29,29,31,.9); color: #fff; font-size: 14px; letter-spacing: -0.224px;
@@ -81,6 +89,10 @@
 <h1 id="bigtitle">fileweb</h1>
 <div class="group" id="group"></div>
 <div class="empty" id="empty" hidden>此文件夹为空</div>
+<button class="fab" id="fab" aria-label="上传文件">
+  <svg width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+</button>
+<input type="file" id="fileinp" hidden>
 <div class="safe-bottom"></div>
 
 <div id="editor">
@@ -185,6 +197,24 @@ document.getElementById("back").onclick = () => {
 };
 document.getElementById("fwd").onclick = () => {
   if (hidx < hist.length - 1) { hidx++; render(hist[hidx]); }
+};
+
+// ---- 上传 ----
+const fab = document.getElementById("fab"), fileinp = document.getElementById("fileinp");
+fab.onclick = () => fileinp.click();
+fileinp.onchange = async () => {
+  const f = fileinp.files[0];
+  if (!f) return;
+  fab.disabled = true;
+  toast("上传中…");
+  const fd = new FormData();
+  fd.append("path", cur);
+  fd.append("file", f);
+  const d = await api("/api/upload", { method: "POST", body: fd });
+  fab.disabled = false;
+  fileinp.value = "";
+  if (d && d.ok) { toast("已上传 " + d.name); render(cur); }
+  else if (d) toast(d.error || "上传失败");
 };
 
 render("");

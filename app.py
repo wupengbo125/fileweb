@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """fileweb —— 手机优先的极简文件查看/编辑器（零依赖，仅标准库）"""
+import cgi
 import hashlib
 import json
 import os
@@ -12,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(os.environ.get("ONE_FILES_ROOT", str(Path.home() / "onespace" / "github"))).resolve()
 PASSWORD = os.environ.get("ONE_FILES_PASSWORD") or os.environ.get("common_password") or ""
 MAX_EDIT_SIZE = 2 * 1024 * 1024
+MAX_UPLOAD_SIZE = 200 * 1024 * 1024
 TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest()
 COOKIE = "of_session"
 HERE = Path(__file__).resolve().parent
@@ -30,6 +32,17 @@ def human(n):
             return f"{n:.0f}{unit}" if unit != "B" else f"{n}B"
         n /= 1024
     return f"{n:.0f}T"
+
+
+def unique_path(dest):
+    """重名不覆盖：name.ext → name 1.ext → name 2.ext ..."""
+    if not dest.exists():
+        return dest
+    stem, suffix = dest.stem, dest.suffix
+    i = 1
+    while (dest.with_name(f"{stem} {i}{suffix}")).exists():
+        i += 1
+    return dest.with_name(f"{stem} {i}{suffix}")
 
 
 def login_page(err=""):
@@ -153,7 +166,41 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "不是文件"}, 400)
             p.write_text(data.get("content", ""), encoding="utf-8")
             return self._json({"ok": True})
+        if u.path == "/api/upload":
+            return self.api_upload()
         self._send(404, "not found", "text/plain")
+
+    def api_upload(self):
+        try:
+            fs = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+                                  environ={"REQUEST_METHOD": "POST"})
+            p = safe_path(fs.getvalue("path", ""))
+            if not p.is_dir():
+                return self._json({"error": "目标不是目录"}, 400)
+            if "file" not in fs or not fs["file"].filename:
+                return self._json({"error": "没有文件"}, 400)
+            # 文件名只取 basename，防路径穿越
+            name = os.path.basename(fs["file"].filename.replace("\\", "/"))
+            if name in ("", ".", ".."):
+                return self._json({"error": "文件名无效"}, 400)
+            dest = unique_path(p / name)
+            size = 0
+            with open(dest, "wb") as f:
+                while True:
+                    chunk = fs["file"].file.read(1024 * 256)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_SIZE:
+                        f.close()
+                        dest.unlink()
+                        return self._json({"error": f"超过 {human(MAX_UPLOAD_SIZE)} 上限"}, 400)
+                    f.write(chunk)
+            return self._json({"ok": True, "name": dest.name})
+        except PermissionError as e:
+            return self._json({"error": str(e)}, 403)
+        except Exception as e:
+            return self._json({"error": f"上传失败: {e}"}, 400)
 
 
 def main():
