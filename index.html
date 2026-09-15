@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>one-files</title>
+<style>
+  :root { --bg:#111; --card:#1c1c1e; --fg:#eee; --sub:#888; --accent:#4a9eff; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system,system-ui,sans-serif; }
+  header { position:sticky; top:0; background:#18181b; padding:calc(env(safe-area-inset-top) + 10px) 12px 10px;
+           font-size:15px; border-bottom:1px solid #2a2a2e; display:flex; align-items:center; gap:8px; z-index:5; }
+  #up { background:#2a2a2e; border:0; color:var(--fg); border-radius:8px; padding:6px 12px; font-size:14px; }
+  #crumb { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sub); }
+  #crumb b { color:var(--fg); }
+  ul { list-style:none; margin:0; padding:0 0 80px; }
+  li { display:flex; align-items:center; gap:12px; padding:14px 14px; border-bottom:1px solid #232326; font-size:16px; }
+  li:active { background:#232326; }
+  .ico { width:26px; text-align:center; font-size:20px; flex:none; }
+  .meta { margin-left:auto; font-size:12px; color:var(--sub); flex:none; }
+  .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #editor { position:fixed; inset:0; background:var(--bg); display:none; flex-direction:column; z-index:10; }
+  #editor .bar { display:flex; gap:8px; padding:calc(env(safe-area-inset-top) + 10px) 12px 10px; background:#18181b;
+                 border-bottom:1px solid #2a2a2e; align-items:center; }
+  #editor .bar span { flex:1; font-size:14px; color:var(--sub); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  button.act { background:var(--accent); border:0; color:#fff; border-radius:8px; padding:9px 16px; font-size:15px; }
+  button.ghost { background:#2a2a2e; }
+  textarea { flex:1; width:100%; background:var(--bg); color:var(--fg); border:0; padding:14px;
+             font-family:ui-monospace,Menlo,Consolas,monospace; font-size:14px; line-height:1.6;
+             white-space:pre; overflow:auto; resize:none; }
+  #toast { position:fixed; left:50%; transform:translateX(-50%); bottom:40px; background:#000c; color:#fff;
+           padding:10px 20px; border-radius:20px; font-size:14px; opacity:0; transition:opacity .25s; pointer-events:none; z-index:20; }
+  #toast.on { opacity:1; }
+  #err { color:#ff6b6b; padding:20px; font-size:15px; }
+</style>
+</head>
+<body>
+<header>
+  <button id="up">返回</button>
+  <div id="crumb">/</div>
+</header>
+<ul id="list"></ul>
+<div id="editor">
+  <div class="bar">
+    <button class="act ghost" onclick="closeEd()">关闭</button>
+    <span id="edname"></span>
+    <button class="act" onclick="save()">保存</button>
+  </div>
+  <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+</div>
+<div id="toast"></div>
+<div id="err"></div>
+
+<script>
+let cur = "", curFile = "";
+
+async function api(url, opt) {
+  const r = await fetch(url, opt);
+  if (r.status === 401 || r.redirected) location = "/login";
+  return r.json();
+}
+
+async function list(p) {
+  cur = p;
+  const d = await api("/api/list?path=" + encodeURIComponent(p));
+  if (d.error) { err(d.error); return; }
+  err("");
+  document.getElementById("crumb").innerHTML = p ? ".../" + "<b>" + esc(p.split("/").pop()) + "</b>" : "<b>/</b>";
+  document.getElementById("up").style.visibility = p ? "visible" : "hidden";
+  const ul = document.getElementById("list");
+  ul.innerHTML = "";
+  if (!d.entries.length) ul.innerHTML = '<li><span class="name" style="color:#888">空目录</span></li>';
+  for (const e of d.entries) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="ico">${e.type === "dir" ? "📁" : "📄"}</span>
+      <span class="name">${esc(e.name)}</span>
+      <span class="meta">${e.mtime}${e.size ? " · " + e.size : ""}</span>`;
+    li.onclick = () => e.type === "dir" ? list(rel(p, e.name)) : open(rel(p, e.name), e.name);
+    ul.appendChild(li);
+  }
+  scrollTo(0, 0);
+}
+
+const rel = (p, n) => p ? p + "/" + n : n;
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function err(m) { document.getElementById("err").textContent = m || ""; }
+
+async function open(path, name) {
+  const d = await api("/api/file?path=" + encodeURIComponent(path));
+  if (d.error) { toast(d.error); return; }
+  curFile = path;
+  document.getElementById("edname").textContent = name;
+  document.getElementById("ta").value = d.content;
+  document.getElementById("editor").style.display = "flex";
+}
+
+function closeEd() {
+  document.getElementById("editor").style.display = "none";
+  curFile = "";
+}
+
+async function save() {
+  const d = await api("/api/file", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: curFile, content: document.getElementById("ta").value })
+  });
+  toast(d.ok ? "已保存" : (d.error || "保存失败"));
+}
+
+let tt;
+function toast(m) {
+  const t = document.getElementById("toast");
+  t.textContent = m; t.classList.add("on");
+  clearTimeout(tt); tt = setTimeout(() => t.classList.remove("on"), 1600);
+}
+
+document.getElementById("up").onclick = () => {
+  const i = cur.lastIndexOf("/");
+  list(i > 0 ? cur.slice(0, i) : (i === 0 ? "" : ""));
+};
+
+list("");
+</script>
+</body>
+</html>
