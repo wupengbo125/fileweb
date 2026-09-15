@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import sys
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
