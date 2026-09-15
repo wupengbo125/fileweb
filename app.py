@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-ROOT = Path(os.environ.get("ONE_FILES_ROOT", str(Path.home()))).resolve()
+ROOT = Path(os.environ.get("ONE_FILES_ROOT", str(Path.home() / "onespace" / "github"))).resolve()
 PASSWORD = os.environ.get("ONE_FILES_PASSWORD") or os.environ.get("common_password") or ""
 MAX_EDIT_SIZE = 2 * 1024 * 1024
 TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest()
