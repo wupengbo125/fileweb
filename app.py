@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""one-files —— 手机优先的极简文件查看/编辑器（零依赖，仅标准库）"""
+"""fileweb —— 手机优先的极简文件查看/编辑器（零依赖，仅标准库）"""
 import hashlib
 import json
 import os
@@ -31,14 +31,24 @@ def human(n):
     return f"{n:.0f}T"
 
 
-def login_page():
-    return """<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
-<title>one-files</title><style>
-body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#111;color:#eee}
-form{width:80%;max-width:320px}
-input{width:100%;padding:14px;font-size:17px;margin:8px 0;border-radius:10px;border:1px solid #444;background:#222;color:#eee;box-sizing:border-box}
-button{width:100%;padding:14px;font-size:17px;border:0;border-radius:10px;background:#4a9eff;color:#fff}
-</style><form method=post><h2>one-files</h2><input type=password name=password placeholder=密码 autofocus><button>进入</button></form>"""
+def login_page(err=""):
+    return """<!doctype html><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>fileweb</title><style>
+:root{--primary:#0066cc;--ink:#1d1d1f;--muted:#7a7a7a;--parchment:#f5f5f7}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:system-ui,-apple-system,"SF Pro Text",sans-serif;font-size:17px;letter-spacing:-.374px;
+display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:var(--parchment);color:var(--ink)}
+.card{width:82%;max-width:340px;text-align:center}
+h1{font-size:34px;font-weight:600;letter-spacing:-.374px;margin:0 0 6px}
+p{font-size:14px;letter-spacing:-.224px;color:var(--muted);margin:0 0 28px}
+input{width:100%;padding:12px 20px;height:48px;font-size:17px;margin:0 0 14px;border-radius:9999px;
+border:1px solid rgba(0,0,0,.08);background:#fff;color:var(--ink)}
+button{width:100%;padding:11px 22px;font-size:17px;border:0;border-radius:9999px;background:var(--primary);color:#fff}
+button:active{transform:scale(.95)}
+.err{color:#ff3b30;font-size:14px;letter-spacing:-.224px;margin:0 0 14px}
+</style><div class=card><h1>fileweb</h1><p>在手机上查看并修改这台机器的文件</p>""" + \
+        (f'<p class=err>{err}</p>' if err else "") + \
+        '<form method=post><input type=password name=password placeholder=密码 autofocus><button>进入</button></form></div>'
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -129,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
             if pwd == PASSWORD:
                 return self._send(302, "", "text/plain", [("Location", "/"),
                                                           ("Set-Cookie", f"{COOKIE}={TOKEN}; Path=/; HttpOnly; Max-Age=2592000")])
-            return self._send(200, login_page().replace("<h2>one-files</h2>", "<h2>one-files</h2><p style=color:#ff6b6b>密码错误</p>"))
+            return self._send(200, login_page("密码错误"))
         if not self._authed():
             return self._send(302, "", "text/plain", [("Location", "/login")])
         if u.path == "/api/file":
