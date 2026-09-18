@@ -70,10 +70,8 @@
 
   /* ---- 上传悬浮按钮 ---- */
   .fab { position: fixed; right: 16px; bottom: calc(env(safe-area-inset-bottom) - 15px);
-    width: 56px; height: 56px; border: 0; padding: 0; background: none;
-    color: var(--primary); font-family: inherit; font-size: 38px; font-weight: 200;
-    line-height: 1; display: flex; align-items: center; justify-content: center;
-    z-index: 15; user-select: none; }
+    width: 56px; height: 56px; border-radius: 9999px; border: 0; background: var(--primary);
+    color: #fff; display: flex; align-items: center; justify-content: center; z-index: 15; }
   .fab:active { transform: scale(.95); }
   .fab:disabled { opacity: .5; }
 
@@ -108,7 +106,9 @@
 <h1 id="bigtitle">fileweb</h1>
 <div class="group" id="group"></div>
 <div class="empty" id="empty" hidden>此文件夹为空</div>
-<button class="fab" id="fab" aria-label="更多">+</button>
+<button class="fab" id="fab" aria-label="更多">
+  <svg width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+</button>
 <input type="file" id="fileinp" hidden>
 <div class="mask" id="mask" hidden></div>
 <div class="menu" id="menu" hidden>
