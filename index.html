@@ -69,14 +69,10 @@
   textarea:focus { outline: none; }
 
   /* ---- 上传悬浮按钮 ---- */
-  .fab { position: fixed; right: 20px; bottom: calc(env(safe-area-inset-bottom) + 28px);
-    width: 56px; height: 56px; border: 0; color: #fff; display: flex; align-items: center;
-    justify-content: center; z-index: 15;
-    /* 超椭圆曲率（近似 Apple 图标的 squircle），比正圆更贴合 iOS 观感 */
-    border-radius: 30%;
-    background: linear-gradient(180deg, #1a91ff 0%, var(--primary) 100%);
-    box-shadow: 0 6px 18px rgba(0,102,204,.32), 0 1px 2px rgba(0,0,0,.10);
-    transition: transform .18s cubic-bezier(.2,.9,.3,1); }
+  .fab { position: fixed; right: 20px; bottom: calc(env(safe-area-inset-bottom) + 20px);
+    width: 56px; height: 56px; border: 0; border-radius: 50%;
+    background: var(--primary); color: #fff; display: flex; align-items: center;
+    justify-content: center; z-index: 15; }
   .fab:active { transform: scale(.95); }
   .fab:disabled { opacity: .5; }
 
@@ -112,7 +108,7 @@
 <div class="group" id="group"></div>
 <div class="empty" id="empty" hidden>此文件夹为空</div>
 <button class="fab" id="fab" aria-label="上传文件">
-  <svg width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
+  <svg width="22" height="22" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
 </button>
 <input type="file" id="fileinp" hidden>
 <div class="mask" id="mask" hidden></div>
