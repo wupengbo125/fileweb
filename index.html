@@ -76,6 +76,17 @@
   .fab:active { transform: scale(.95); }
   .fab:disabled { opacity: .5; }
 
+  /* ---- 加号菜单 ---- */
+  .mask { position: fixed; inset: 0; background: rgba(0,0,0,.18); z-index: 14; }
+  .menu { position: fixed; right: 20px; bottom: calc(env(safe-area-inset-bottom) + 92px);
+    width: 190px; background: rgba(255,255,255,.96);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+    border-radius: 14px; box-shadow: 0 6px 24px rgba(0,0,0,.18); overflow: hidden; z-index: 16; }
+  .menu button { display: block; width: 100%; text-align: left; font: inherit; font-size: 17px;
+    letter-spacing: -0.374px; color: var(--ink); padding: 13px 16px; background: none; border: 0; }
+  .menu button:active { background: rgba(0,102,204,.08); }
+  .menu button + button { border-top: 1px solid rgba(0,0,0,.06); }
+
   /* ---- toast ---- */
   #toast { position: fixed; left: 50%; transform: translateX(-50%) translateY(8px); bottom: 48px;
     background: rgba(29,29,31,.9); color: #fff; font-size: 14px; letter-spacing: -0.224px;
@@ -100,6 +111,11 @@
   <svg width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
 </button>
 <input type="file" id="fileinp" hidden>
+<div class="mask" id="mask" hidden></div>
+<div class="menu" id="menu" hidden>
+  <button id="miUpload">选择文件上传</button>
+  <button id="miSync">同步 GitHub 仓库</button>
+</div>
 <div class="safe-bottom"></div>
 
 <div id="editor">
@@ -206,9 +222,28 @@ document.getElementById("fwd").onclick = () => {
   if (hidx < hist.length - 1) { hidx++; render(hist[hidx]); }
 };
 
-// ---- 上传 ----
+// ---- 加号菜单 ----
 const fab = document.getElementById("fab"), fileinp = document.getElementById("fileinp");
-fab.onclick = () => fileinp.click();
+const menu = document.getElementById("menu"), mask = document.getElementById("mask");
+const showMenu = v => { menu.hidden = mask.hidden = !v; };
+fab.onclick = () => showMenu(menu.hidden);
+mask.onclick = () => showMenu(false);
+document.getElementById("miUpload").onclick = () => { showMenu(false); fileinp.click(); };
+document.getElementById("miSync").onclick = () => { showMenu(false); sync(); };
+
+async function sync() {
+  fab.disabled = true;
+  toast("同步中…");
+  const d = await api("/api/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: cur })
+  });
+  fab.disabled = false;
+  if (d && d.ok) { toast("已同步 " + d.repo); render(cur); }
+  else if (d) toast(d.error || "同步失败");
+}
+
 fileinp.onchange = async () => {
   const f = fileinp.files[0];
   if (!f) return;

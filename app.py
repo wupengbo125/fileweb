@@ -4,6 +4,7 @@ import cgi
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,6 +44,16 @@ def unique_path(dest):
     while (dest.with_name(f"{stem} {i}{suffix}")).exists():
         i += 1
     return dest.with_name(f"{stem} {i}{suffix}")
+
+
+def git_repo_root(p):
+    """从 p 向上找最近的 .git，不越出 ROOT"""
+    for d in (p, *p.parents):
+        if (d / ".git").exists():
+            return d
+        if d == ROOT:
+            break
+    return None
 
 
 def login_page(err=""):
@@ -176,7 +187,47 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if u.path == "/api/upload":
             return self.api_upload()
+        if u.path == "/api/sync":
+            return self.api_sync()
         self._send(404, "not found", "text/plain")
+
+    def api_sync(self):
+        """同步当前所在仓库：先 pull，再 commit（信息 debug），最后 push"""
+        try:
+            p = safe_path(json.loads(self._body().decode()).get("path", ""))
+        except (PermissionError, ValueError) as e:
+            return self._json({"error": f"请求无效: {e}"}, 400)
+        base = p if p.is_dir() else p.parent
+        root = git_repo_root(base)
+        if not root:
+            return self._json({"error": "当前目录不在 Git 仓库中"}, 400)
+
+        def git(*args):
+            r = subprocess.run(("git",) + args, cwd=str(root), capture_output=True,
+                               text=True, timeout=300)
+            return r.returncode, (r.stdout + r.stderr).strip()
+
+        try:
+            log = []
+            for args in (("pull",), ("add", "-A")):
+                code, out = git(*args)
+                log.append(f"git {' '.join(args)} → {out.splitlines()[0] if out else 'ok'}")
+                if code:
+                    return self._json({"error": out or f"git {args[0]} 失败", "log": log}, 400)
+            if git("diff", "--cached", "--quiet")[0]:   # 有暂存改动才提交
+                code, out = git("commit", "-m", "debug")
+                log.append(f"git commit → {out.splitlines()[0] if out else 'ok'}")
+                if code:
+                    return self._json({"error": out or "git commit 失败", "log": log}, 400)
+            else:
+                log.append("git commit → 无改动，跳过")
+            code, out = git("push")
+            log.append(f"git push → {out.splitlines()[0] if out else 'ok'}")
+            if code:
+                return self._json({"error": out or "git push 失败", "log": log}, 400)
+        except subprocess.TimeoutExpired:
+            return self._json({"error": "同步超时"}, 500)
+        return self._json({"ok": True, "repo": root.name, "log": log})
 
     def api_upload(self):
         try:
