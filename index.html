@@ -70,9 +70,13 @@
 
   /* ---- 上传悬浮按钮 ---- */
   .fab { position: fixed; right: 20px; bottom: calc(env(safe-area-inset-bottom) + 28px);
-    width: 54px; height: 54px; border-radius: 9999px; border: 0; background: var(--primary);
-    color: #fff; display: flex; align-items: center; justify-content: center; z-index: 15;
-    box-shadow: 0 2px 12px rgba(0,102,204,.35); }
+    width: 56px; height: 56px; border: 0; color: #fff; display: flex; align-items: center;
+    justify-content: center; z-index: 15;
+    /* 超椭圆曲率（近似 Apple 图标的 squircle），比正圆更贴合 iOS 观感 */
+    border-radius: 30%;
+    background: linear-gradient(180deg, #1a91ff 0%, var(--primary) 100%);
+    box-shadow: 0 6px 18px rgba(0,102,204,.32), 0 1px 2px rgba(0,0,0,.10);
+    transition: transform .18s cubic-bezier(.2,.9,.3,1); }
   .fab:active { transform: scale(.95); }
   .fab:disabled { opacity: .5; }
 
