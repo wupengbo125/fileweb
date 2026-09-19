@@ -63,7 +63,12 @@
   #editor .save:focus { outline: 2px solid #0071e3; outline-offset: 2px; }
   #filename { position: fixed; top: calc(env(safe-area-inset-top) + 40px); left: 0; right: 0;
     text-align: center; font-size: 12px; letter-spacing: -0.12px; color: var(--muted); z-index: 21; pointer-events: none; }
-  textarea { flex: 1; width: 100%; border: 0; padding: 44px 16px 16px; background: var(--canvas); color: var(--ink);
+  #edbody { flex: 1; display: flex; min-height: 0; background: var(--canvas); }
+  #gutter { flex: none; width: 44px; overflow: hidden; background: var(--parchment);
+    border-right: 1px solid var(--hairline); }
+  #gutter pre { margin: 0; padding: 44px 8px 16px 0; text-align: right; color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 16px; line-height: 1.6; }
+  textarea { flex: 1; width: 100%; border: 0; padding: 44px 16px 16px 8px; background: var(--canvas); color: var(--ink);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 16px; line-height: 1.6;
     letter-spacing: 0; white-space: pre; overflow: auto; resize: none; }
   textarea:focus { outline: none; }
@@ -124,7 +129,10 @@
     <button class="save" onclick="save()">保存</button>
   </div>
   <div id="filename"></div>
-  <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+  <div id="edbody">
+    <div id="gutter"><pre id="ln"></pre></div>
+    <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+  </div>
 </div>
 <div id="toast"></div>
 
@@ -187,12 +195,20 @@ function navigate(p) {
   render(p);
 }
 
+const ta = document.getElementById("ta"), ln = document.getElementById("ln");
+function renderLN() {
+  ln.textContent = Array.from({ length: ta.value.split("\n").length }, (_, i) => i + 1).join("\n");
+}
+ta.addEventListener("input", renderLN);
+ta.addEventListener("scroll", () => { ln.style.transform = `translateY(${-ta.scrollTop}px)`; });
+
 async function open(path, name) {
   const d = await api("/api/file?path=" + encodeURIComponent(path));
   if (!d || d.error) { if (d) toast(d.error || "打开失败"); return; }
   curFile = path;
   document.getElementById("filename").textContent = name;
-  document.getElementById("ta").value = d.content;
+  ta.value = d.content;
+  ta.scrollTop = 0; ln.style.transform = "translateY(0)"; renderLN();
   document.getElementById("editor").style.display = "flex";
 }
 
