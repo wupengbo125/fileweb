@@ -201,6 +201,24 @@ function renderLN() {
 }
 ta.addEventListener("input", renderLN);
 ta.addEventListener("scroll", () => { ln.style.transform = `translateY(${-ta.scrollTop}px)`; });
+ta.addEventListener("keydown", e => {                    // Ctrl+X 无选区：剪切整行
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "x") return;
+  if (ta.selectionStart !== ta.selectionEnd) return;     // 有选区 → 交给浏览器原生剪切
+  const v = ta.value, i = ta.selectionStart;
+  const s = v.lastIndexOf("\n", i - 1) + 1;              // 行首
+  const nl = v.indexOf("\n", i);
+  const end = nl === -1 ? v.length : nl + 1;             // 整行含换行符
+  const line = v.slice(s, end);
+  e.preventDefault();
+  ta.setSelectionRange(s, end);
+  let ok = false;
+  try { ok = document.execCommand("cut"); } catch (_) {}  // 原生剪切：写剪贴板 + 保留 undo 栈
+  if (!ok) {                                             // 兜底：手动删行 + 写剪贴板
+    ta.setRangeText("", s, end, "end");
+    navigator.clipboard?.writeText(line).catch(() => {});
+  }
+  renderLN();
+});
 
 async function open(path, name) {
   const d = await api("/api/file?path=" + encodeURIComponent(path));
