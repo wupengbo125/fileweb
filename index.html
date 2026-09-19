@@ -301,6 +301,11 @@ function toast(m, keep) {
   if (!keep) tt = setTimeout(() => t.classList.remove("on"), 1600);
 }
 
+function hideToast() {
+  clearTimeout(tt);
+  document.getElementById("toast").classList.remove("on");
+}
+
 function okFlash() {
   const o = document.getElementById("okfl");
   o.classList.add("on");
@@ -343,6 +348,7 @@ async function sync() {
     body: JSON.stringify({ path: cur })
   });
   fab.disabled = false;
+  hideToast();
   if (d && d.ok) { okFlash(); render(cur); }
   else if (d) fail("同步失败", d.error, d.log);
 }
