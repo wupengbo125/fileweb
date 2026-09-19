@@ -207,6 +207,13 @@ async function save() {
   toast(d.ok ? "已保存" : (d.error || "保存失败"));
 }
 
+addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+    e.preventDefault();          // 拦掉浏览器的“保存网页”
+    if (curFile) save();
+  }
+});
+
 let tt;
 function toast(m) {
   const t = document.getElementById("toast");
