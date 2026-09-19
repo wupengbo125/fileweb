@@ -89,7 +89,10 @@ def sync_repo(root):
 
 def login_page(err=""):
     return """<!doctype html><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>fileweb</title><link rel=icon type=image/png sizes=32x32 href=/favicon-32.png><style>
+<title>fileweb</title><link rel=icon type=image/png sizes=32x32 href=/favicon-32.png>
+<link rel=manifest href=/manifest.json>
+<meta name=theme-color content=#f5f5f7>
+<style>
 :root{--primary:#0066cc;--ink:#1d1d1f;--muted:#7a7a7a;--parchment:#f5f5f7}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{font-family:system-ui,-apple-system,"SF Pro Text",sans-serif;font-size:17px;letter-spacing:-.374px;
@@ -104,7 +107,8 @@ button:active{transform:scale(.95)}
 .err{color:#ff3b30;font-size:14px;letter-spacing:-.224px;margin:0 0 14px}
 </style><div class=card><h1>fileweb</h1><p>在手机上查看并修改这台机器的文件</p>""" + \
         (f'<p class=err>{err}</p>' if err else "") + \
-        '<form method=post><input type=password name=password placeholder=密码 autofocus><button>进入</button></form></div>'
+        '<form method=post><input type=password name=password placeholder=密码 autofocus><button>进入</button></form></div>' \
+        "<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js',{scope:'/'})</script>"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -140,13 +144,19 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/login":
             return self._send(200, login_page())
         # 图标白名单在认证之前：iOS 抓取主屏幕图标时不带 cookie
-        icons = {"/favicon.ico": ("assets/favicon.ico", "image/x-icon"),
-                 "/favicon-32.png": ("assets/favicon-32.png", "image/png"),
-                 "/favicon-16.png": ("assets/favicon-16.png", "image/png"),
-                 "/apple-touch-icon.png": ("assets/apple-touch-icon.png", "image/png")}
-        if u.path in icons:
-            fn, ct = icons[u.path]
-            return self._send(200, (HERE / fn).read_bytes(), ct, [("Cache-Control", "public, max-age=86400")])
+        # 图标 / PWA 静态资源白名单在认证之前：Chrome/系统抓取 manifest、SW、图标时不带 cookie
+        public = {"/favicon.ico": ("assets/favicon.ico", "image/x-icon"),
+                  "/favicon-32.png": ("assets/favicon-32.png", "image/png"),
+                  "/favicon-16.png": ("assets/favicon-16.png", "image/png"),
+                  "/apple-touch-icon.png": ("assets/apple-touch-icon.png", "image/png"),
+                  "/icon-192.png": ("assets/icon-192.png", "image/png"),
+                  "/icon-512.png": ("assets/icon-512.png", "image/png"),
+                  "/manifest.json": ("manifest.json", "application/manifest+json"),
+                  "/sw.js": ("sw.js", "application/javascript")}
+        if u.path in public:
+            fn, ct = public[u.path]
+            return self._send(200, (HERE / fn).read_bytes(), ct,
+                              [("Cache-Control", "public, max-age=86400")])
         if not self._authed():
             return self._send(302, "", "text/plain", [("Location", "/login")])
 
