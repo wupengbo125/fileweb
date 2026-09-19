@@ -98,6 +98,27 @@
     pointer-events: none; z-index: 30; }
   #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* ---- 成功对勾 / 失败弹窗 ---- */
+  #okfl { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    z-index: 40; pointer-events: none; }
+  #okfl.on { display: flex; }
+  #okfl .tick { width: 96px; height: 96px; border-radius: 26px; background: rgba(52,199,89,.95);
+    display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+  #dlg, #dlgmask { position: fixed; }
+  #dlg[hidden], #dlgmask[hidden] { display: none; }
+  #dlgmask { inset: 0; background: rgba(0,0,0,.28); z-index: 41; }
+  #dlg { left: 50%; top: 50%; transform: translate(-50%,-50%); width: 86%; max-width: 420px; max-height: 76vh;
+    display: flex; flex-direction: column; background: #fff; border-radius: 18px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.25); overflow: hidden; z-index: 42; }
+  #dlg h2 { margin: 0; padding: 20px 20px 6px; font-size: 17px; font-weight: 600; color: #ff3b30; }
+  #dlgmsg { margin: 0; padding: 0 20px; font-size: 15px; line-height: 1.5; }
+  #dlglog { margin: 14px 20px; padding: 12px; background: var(--parchment); border-radius: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5;
+    white-space: pre-wrap; overflow: auto; min-height: 0; }
+  #dlg button { flex: none; margin: 0 20px 20px; padding: 11px 22px; font: inherit; font-size: 17px;
+    border: 0; border-radius: 9999px; background: var(--primary); color: #fff; }
+  #dlg button:active { transform: scale(.95); }
+
   .safe-bottom { height: env(safe-area-inset-bottom); }
 </style>
 </head>
@@ -106,7 +127,7 @@
 <div class="nav" id="listnav">
   <button class="navbtn" id="back" aria-label="后退" disabled></button>
   <div class="title" id="title">fileweb</div>
-  <button class="navbtn" id="fwd" aria-label="前进" disabled></button>
+  <button class="navbtn" id="refresh" aria-label="刷新"></button>
 </div>
 <h1 id="bigtitle">fileweb</h1>
 <div class="group" id="group"></div>
@@ -135,6 +156,17 @@
   </div>
 </div>
 <div id="toast"></div>
+<div id="okfl"><div class="tick">
+  <svg width="52" height="52" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="3"
+    stroke-linecap="round" stroke-linejoin="round" d="M5 12.5 10 17.5 19 7"/></svg>
+</div></div>
+<div id="dlgmask" hidden></div>
+<div id="dlg" hidden>
+  <h2 id="dlgtitle">操作失败</h2>
+  <p id="dlgmsg"></p>
+  <pre id="dlglog" hidden></pre>
+  <button onclick="closeDlg()">关闭</button>
+</div>
 
 <script>
 const SVG_FOLDER = '<svg width="26" height="26" viewBox="0 0 24 24"><path fill="#4da3ff" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6a2 2 0 0 1 1.5.68L11.9 6h6.6A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11z"/></svg>';
@@ -142,16 +174,15 @@ const SVG_DOC = '<svg width="24" height="24" viewBox="0 0 24 24"><path fill="#98
 const SVG_CHEV = '<svg class="chev" width="8" height="14" viewBox="0 0 8 14"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M1.5 1.5 6.5 7l-5 5.5"/></svg>';
 
 const SVG_CHEV_L = '<svg width="13" height="22" viewBox="0 0 13 22"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M11 2 2.5 11 11 20"/></svg>';
-const SVG_CHEV_R = '<svg width="13" height="22" viewBox="0 0 13 22"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M2 2l8.5 9L2 20"/></svg>';
+const SVG_REFRESH = '<svg width="22" height="22" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 3.5V8.5h-5"/></g></svg>';
 document.getElementById("back").innerHTML = SVG_CHEV_L;
-document.getElementById("fwd").innerHTML = SVG_CHEV_R;
+document.getElementById("refresh").innerHTML = SVG_REFRESH;
 
-let cur = "", curFile = "";
-let hist = [""], hidx = 0;   // 浏览器式历史栈：进新目录 push，后退/前进移动指针
+let cur = "", curFile = "", savedVal = "";
+let hist = [""], hidx = 0;   // 后退栈：进新目录 push
 
 function updateNav() {
   document.getElementById("back").disabled = hidx <= 0;
-  document.getElementById("fwd").disabled = hidx >= hist.length - 1;
 }
 
 async function api(url, opt) {
@@ -190,7 +221,6 @@ async function render(p) {
 
 function navigate(p) {
   if (p === hist[hidx]) return;
-  hist = hist.slice(0, hidx + 1);   // 进入新目录，清掉前进分支
   hist.push(p); hidx++;
   render(p);
 }
@@ -226,6 +256,7 @@ async function open(path, name) {
   curFile = path;
   document.getElementById("filename").textContent = name;
   ta.value = d.content;
+  savedVal = d.content;
   ta.scrollTop = 0; ln.style.transform = "translateY(0)"; renderLN();
   document.getElementById("editor").style.display = "flex";
 }
@@ -236,10 +267,18 @@ async function save() {
   const d = await api("/api/file", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: curFile, content: document.getElementById("ta").value })
+    body: JSON.stringify({ path: curFile, content: ta.value })
   });
-  toast(d.ok ? "已保存" : (d.error || "保存失败"));
+  if (d && d.ok) { savedVal = ta.value; okFlash(); }
+  else fail("保存失败", d && d.error);
 }
+
+function refresh() {
+  if (!curFile) return render(cur);
+  if (ta.value !== savedVal && !confirm("有未保存的修改，刷新将丢弃它们，继续？")) return;
+  open(curFile, document.getElementById("filename").textContent);
+}
+document.getElementById("refresh").onclick = refresh;
 
 addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
@@ -256,11 +295,25 @@ function toast(m, keep) {
   if (!keep) tt = setTimeout(() => t.classList.remove("on"), 1600);
 }
 
+function okFlash() {
+  const o = document.getElementById("okfl");
+  o.classList.add("on");
+  setTimeout(() => o.classList.remove("on"), 500);
+}
+
+function fail(title, msg, log) {
+  document.getElementById("dlgtitle").textContent = title;
+  document.getElementById("dlgmsg").textContent = msg || "未知错误";
+  const lg = document.getElementById("dlglog");
+  lg.textContent = (log || []).join("\n");
+  lg.hidden = !lg.textContent;
+  document.getElementById("dlg").hidden = document.getElementById("dlgmask").hidden = false;
+}
+
+function closeDlg() { document.getElementById("dlg").hidden = document.getElementById("dlgmask").hidden = true; }
+
 document.getElementById("back").onclick = () => {
   if (hidx > 0) { hidx--; render(hist[hidx]); }
-};
-document.getElementById("fwd").onclick = () => {
-  if (hidx < hist.length - 1) { hidx++; render(hist[hidx]); }
 };
 
 // ---- 加号菜单 ----
@@ -281,8 +334,8 @@ async function sync() {
     body: JSON.stringify({ path: cur })
   });
   fab.disabled = false;
-  if (d && d.ok) { toast("已同步 " + d.repo); render(cur); }
-  else if (d) toast(d.error || "同步失败");
+  if (d && d.ok) { okFlash(); render(cur); }
+  else if (d) fail("同步失败", d.error, d.log);
 }
 
 fileinp.onchange = async () => {
