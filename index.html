@@ -215,10 +215,11 @@ addEventListener("keydown", e => {
 });
 
 let tt;
-function toast(m) {
+function toast(m, keep) {
   const t = document.getElementById("toast");
   t.textContent = m; t.classList.add("on");
-  clearTimeout(tt); tt = setTimeout(() => t.classList.remove("on"), 1600);
+  clearTimeout(tt);
+  if (!keep) tt = setTimeout(() => t.classList.remove("on"), 1600);
 }
 
 document.getElementById("back").onclick = () => {
@@ -239,7 +240,7 @@ document.getElementById("miSync").onclick = () => { showMenu(false); sync(); };
 
 async function sync() {
   fab.disabled = true;
-  toast("同步中…");
+  toast("同步中…", true);      // 多仓库同步耗时，提示常驻到结果出来
   const d = await api("/api/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

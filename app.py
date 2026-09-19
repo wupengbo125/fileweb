@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -54,6 +55,36 @@ def git_repo_root(p):
         if d == ROOT:
             break
     return None
+
+
+def sync_repo(root):
+    """pull → add -A → commit（信息 debug，无改动则跳过）→ push；返回 (ok, 错误信息, log)"""
+    def git(*args):
+        r = subprocess.run(("git",) + args, cwd=str(root), capture_output=True,
+                           text=True, timeout=300)
+        return r.returncode, (r.stdout + r.stderr).strip()
+
+    log = []
+    try:
+        for args in (("pull",), ("add", "-A")):
+            code, out = git(*args)
+            log.append(f"git {' '.join(args)} → {out.splitlines()[0] if out else 'ok'}")
+            if code:
+                return False, out or f"git {args[0]} 失败", log
+        if git("diff", "--cached", "--quiet")[0]:   # 有暂存改动才提交
+            code, out = git("commit", "-m", "debug")
+            log.append(f"git commit → {out.splitlines()[0] if out else 'ok'}")
+            if code:
+                return False, out or "git commit 失败", log
+        else:
+            log.append("git commit → 无改动，跳过")
+        code, out = git("push")
+        log.append(f"git push → {out.splitlines()[0] if out else 'ok'}")
+        if code:
+            return False, out or "git push 失败", log
+    except subprocess.TimeoutExpired:
+        return False, "同步超时", log
+    return True, "", log
 
 
 def login_page(err=""):
@@ -192,41 +223,33 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, "not found", "text/plain")
 
     def api_sync(self):
-        """同步当前所在仓库：先 pull，再 commit（信息 debug），最后 push"""
+        """同步当前所在仓库：先 pull，再 commit（信息 debug），最后 push；
+        在 GitHub 根目录时并发同步其下所有仓库"""
         try:
             p = safe_path(json.loads(self._body().decode()).get("path", ""))
         except (PermissionError, ValueError) as e:
             return self._json({"error": f"请求无效: {e}"}, 400)
         base = p if p.is_dir() else p.parent
+
+        if base == ROOT:
+            repos = sorted(d for d in ROOT.iterdir() if d.is_dir() and (d / ".git").exists())
+            if not repos:
+                return self._json({"error": "根目录下没有 Git 仓库"}, 400)
+            with ThreadPoolExecutor(max_workers=min(8, len(repos))) as ex:
+                rs = list(ex.map(sync_repo, repos))
+            log = [f"{r.name} → {lg[-1] if lg else 'ok'}" for r, (_, _, lg) in zip(repos, rs)]
+            failed = [r.name for r, (ok, _, _) in zip(repos, rs) if not ok]
+            if failed:
+                names = "、".join(failed[:3]) + ("…" if len(failed) > 3 else "")
+                return self._json({"error": f"{len(failed)} 个仓库失败：{names}", "log": log}, 400)
+            return self._json({"ok": True, "repo": f"{len(repos)} 个仓库", "log": log})
+
         root = git_repo_root(base)
         if not root:
             return self._json({"error": "当前目录不在 Git 仓库中"}, 400)
-
-        def git(*args):
-            r = subprocess.run(("git",) + args, cwd=str(root), capture_output=True,
-                               text=True, timeout=300)
-            return r.returncode, (r.stdout + r.stderr).strip()
-
-        try:
-            log = []
-            for args in (("pull",), ("add", "-A")):
-                code, out = git(*args)
-                log.append(f"git {' '.join(args)} → {out.splitlines()[0] if out else 'ok'}")
-                if code:
-                    return self._json({"error": out or f"git {args[0]} 失败", "log": log}, 400)
-            if git("diff", "--cached", "--quiet")[0]:   # 有暂存改动才提交
-                code, out = git("commit", "-m", "debug")
-                log.append(f"git commit → {out.splitlines()[0] if out else 'ok'}")
-                if code:
-                    return self._json({"error": out or "git commit 失败", "log": log}, 400)
-            else:
-                log.append("git commit → 无改动，跳过")
-            code, out = git("push")
-            log.append(f"git push → {out.splitlines()[0] if out else 'ok'}")
-            if code:
-                return self._json({"error": out or "git push 失败", "log": log}, 400)
-        except subprocess.TimeoutExpired:
-            return self._json({"error": "同步超时"}, 500)
+        ok, err, log = sync_repo(root)
+        if not ok:
+            return self._json({"error": err, "log": log}, 400)
         return self._json({"ok": True, "repo": root.name, "log": log})
 
     def api_upload(self):
