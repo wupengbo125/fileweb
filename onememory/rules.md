@@ -26,3 +26,12 @@ UI 一律走极简：不要渐变、不要阴影、不要装饰性动效
 - Instructions:
   - 悬浮按钮/控件保持扁平：不要渐变、不要阴影、不要弹性缩放。
   - 克制优先，少即是多；但最终外观以用户当场拍板为准，多轮微调要一次到位、别来回加装饰。
+
+重启 fileweb 服务必须清掉 Agent 会话环境变量
+- Date: 2026-09-19
+- Context: /api/sync 里的 git commit 撞上记忆 pre-commit 门禁，一键同步必失败
+- Category: Operations & Deployment
+- Instructions:
+  - 记忆 pre-commit 靠 `CODEBUDDY_SESSION_ID` / `CLAUDE_SESSION_ID` 识别 Agent（无则 exit 0，人工提交放行）；用 Agent 的 Bash 重启服务会把会话 ID 带进常驻进程，导致服务端 `git commit` 也走 Agent 门禁（要求 onememory/ 已暂存 + 海马摘要等号）而失败。
+  - 重启一律用 `cd ~/onespace/github/fileweb && env -u CODEBUDDY_SESSION_ID -u CLAUDE_SESSION_ID setsid nohup python3 app.py >/tmp/fileweb.log 2>&1 </dev/null &`。
+  - 不要用 `pkill -f "python3 app.py"`：Agent  Bash 自身的命令行含同样字符串，会把自己一起杀掉（表现为 Exit Code SIGTERM），先单独 pgrep 取 pid 再 kill。
