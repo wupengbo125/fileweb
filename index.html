@@ -29,6 +29,7 @@
     padding: calc(env(safe-area-inset-top) + 0px) 16px 0; border-bottom: 1px solid var(--hairline); }
   .nav .navbtn { width: 44px; height: 44px; margin: 0 -8px; background: none; border: 0; padding: 0;
     color: var(--primary); display: flex; align-items: center; justify-content: center; }
+  .nav .navbtn + .navbtn { margin-left: 0; }   /* 右侧两个按钮不做负边距叠加 */
   .nav .navbtn:active:not(:disabled) { opacity: .4; }
   .nav .navbtn:disabled { color: #c7c7cc; }
   .nav .title { flex: 1; text-align: center; font-size: 17px; font-weight: 600; overflow: hidden;
@@ -128,6 +129,7 @@
   <button class="navbtn" id="back" aria-label="后退" disabled></button>
   <div class="title" id="title">fileweb</div>
   <button class="navbtn" id="refresh" aria-label="刷新"></button>
+  <button class="navbtn" id="fwd" aria-label="前进" disabled></button>
 </div>
 <h1 id="bigtitle">fileweb</h1>
 <div class="group" id="group"></div>
@@ -175,14 +177,17 @@ const SVG_CHEV = '<svg class="chev" width="8" height="14" viewBox="0 0 8 14"><pa
 
 const SVG_CHEV_L = '<svg width="13" height="22" viewBox="0 0 13 22"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M11 2 2.5 11 11 20"/></svg>';
 const SVG_REFRESH = '<svg width="22" height="22" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 3.5V8.5h-5"/></g></svg>';
+const SVG_CHEV_R = '<svg width="13" height="22" viewBox="0 0 13 22"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M2 2l8.5 9L2 20"/></svg>';
 document.getElementById("back").innerHTML = SVG_CHEV_L;
 document.getElementById("refresh").innerHTML = SVG_REFRESH;
+document.getElementById("fwd").innerHTML = SVG_CHEV_R;
 
 let cur = "", curFile = "", savedVal = "";
-let hist = [""], hidx = 0;   // 后退栈：进新目录 push
+let hist = [""], hidx = 0;   // 浏览器式历史栈：进新目录 push，后退/前进移动指针
 
 function updateNav() {
   document.getElementById("back").disabled = hidx <= 0;
+  document.getElementById("fwd").disabled = hidx >= hist.length - 1;
 }
 
 async function api(url, opt) {
@@ -221,6 +226,7 @@ async function render(p) {
 
 function navigate(p) {
   if (p === hist[hidx]) return;
+  hist = hist.slice(0, hidx + 1);   // 进入新目录，清掉前进分支
   hist.push(p); hidx++;
   render(p);
 }
@@ -314,6 +320,9 @@ function closeDlg() { document.getElementById("dlg").hidden = document.getElemen
 
 document.getElementById("back").onclick = () => {
   if (hidx > 0) { hidx--; render(hist[hidx]); }
+};
+document.getElementById("fwd").onclick = () => {
+  if (hidx < hist.length - 1) { hidx++; render(hist[hidx]); }
 };
 
 // ---- 加号菜单 ----
