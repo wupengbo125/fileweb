@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """fileweb —— 手机优先的极简文件查看/编辑器（零依赖，仅标准库）"""
-import cgi
 import hashlib
 import json
 import os
 import subprocess
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -19,6 +21,8 @@ MAX_UPLOAD_SIZE = 200 * 1024 * 1024
 TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest()
 COOKIE = "of_session"
 HERE = Path(__file__).resolve().parent
+# 文件写与同步共用一把锁，防并发互踩（个人单机足够）
+_LOCK = threading.Lock()
 
 
 def safe_path(rel):
@@ -224,7 +228,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": f"请求无效: {e}"}, 400)
             if not p.is_file():
                 return self._json({"error": "不是文件"}, 400)
-            p.write_text(data.get("content", ""), encoding="utf-8")
+            with _LOCK:
+                p.write_text(data.get("content", ""), encoding="utf-8")
             return self._json({"ok": True})
         if u.path == "/api/upload":
             return self.api_upload()
@@ -241,53 +246,58 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"请求无效: {e}"}, 400)
         base = p if p.is_dir() else p.parent
 
-        if base == ROOT:
-            repos = sorted(d for d in ROOT.iterdir() if d.is_dir() and (d / ".git").exists())
-            if not repos:
-                return self._json({"error": "根目录下没有 Git 仓库"}, 400)
-            with ThreadPoolExecutor(max_workers=min(8, len(repos))) as ex:
-                rs = list(ex.map(sync_repo, repos))
-            log = [f"{r.name} → {lg[-1] if lg else 'ok'}" for r, (_, _, lg) in zip(repos, rs)]
-            failed = [r.name for r, (ok, _, _) in zip(repos, rs) if not ok]
-            if failed:
-                names = "、".join(failed[:3]) + ("…" if len(failed) > 3 else "")
-                return self._json({"error": f"{len(failed)} 个仓库失败：{names}", "log": log}, 400)
-            return self._json({"ok": True, "repo": f"{len(repos)} 个仓库", "log": log})
+        with _LOCK:
+            if base == ROOT:
+                repos = sorted(d for d in ROOT.iterdir() if d.is_dir() and (d / ".git").exists())
+                if not repos:
+                    return self._json({"error": "根目录下没有 Git 仓库"}, 400)
+                with ThreadPoolExecutor(max_workers=min(8, len(repos))) as ex:
+                    rs = list(ex.map(sync_repo, repos))
+                log = [f"{r.name} → {lg[-1] if lg else 'ok'}" for r, (_, _, lg) in zip(repos, rs)]
+                failed = [r.name for r, (ok, _, _) in zip(repos, rs) if not ok]
+                if failed:
+                    names = "、".join(failed[:3]) + ("…" if len(failed) > 3 else "")
+                    return self._json({"error": f"{len(failed)} 个仓库失败：{names}", "log": log}, 400)
+                return self._json({"ok": True, "repo": f"{len(repos)} 个仓库", "log": log})
 
-        root = git_repo_root(base)
-        if not root:
-            return self._json({"error": "当前目录不在 Git 仓库中"}, 400)
-        ok, err, log = sync_repo(root)
-        if not ok:
-            return self._json({"error": err, "log": log}, 400)
-        return self._json({"ok": True, "repo": root.name, "log": log})
+            root = git_repo_root(base)
+            if not root:
+                return self._json({"error": "当前目录不在 Git 仓库中"}, 400)
+            ok, err, log = sync_repo(root)
+            if not ok:
+                return self._json({"error": err, "log": log}, 400)
+            return self._json({"ok": True, "repo": root.name, "log": log})
 
     def api_upload(self):
         try:
-            fs = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
-                                  environ={"REQUEST_METHOD": "POST"})
-            p = safe_path(fs.getvalue("path", ""))
+            # email 解析需要消息头，补上 Content-Type 再喂给 BytesParser
+            hdr = f"MIME-Version: 1.0\r\nContent-Type: {self.headers.get('Content-Type', '')}\r\n\r\n"
+            msg = BytesParser(policy=policy.default).parsebytes(hdr.encode() + self._body())
+            if not msg.is_multipart():
+                return self._json({"error": "不是上传表单"}, 400)
+            fields, fp = {}, None
+            for part in msg.iter_parts():
+                nm = part.get_param("name", header="content-disposition")
+                if nm == "file":
+                    fp = part
+                elif nm:
+                    fields[nm] = part.get_payload(decode=True).decode()
+            p = safe_path(fields.get("path", ""))
             if not p.is_dir():
                 return self._json({"error": "目标不是目录"}, 400)
-            if "file" not in fs or not fs["file"].filename:
+            if fp is None or not fp.get_filename():
                 return self._json({"error": "没有文件"}, 400)
             # 文件名只取 basename，防路径穿越
-            name = os.path.basename(fs["file"].filename.replace("\\", "/"))
+            name = os.path.basename(fp.get_filename().replace("\\", "/"))
             if name in ("", ".", ".."):
                 return self._json({"error": "文件名无效"}, 400)
             dest = unique_path(p / name)
-            size = 0
-            with open(dest, "wb") as f:
-                while True:
-                    chunk = fs["file"].file.read(1024 * 256)
-                    if not chunk:
-                        break
-                    size += len(chunk)
-                    if size > MAX_UPLOAD_SIZE:
-                        f.close()
-                        dest.unlink()
-                        return self._json({"error": f"超过 {human(MAX_UPLOAD_SIZE)} 上限"}, 400)
-                    f.write(chunk)
+            data = fp.get_payload(decode=True)
+            if len(data) > MAX_UPLOAD_SIZE:
+                return self._json({"error": f"超过 {human(MAX_UPLOAD_SIZE)} 上限"}, 400)
+            with _LOCK:
+                with open(dest, "wb") as f:
+                    f.write(data)
             return self._json({"ok": True, "name": dest.name})
         except PermissionError as e:
             return self._json({"error": str(e)}, 403)
