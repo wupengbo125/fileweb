@@ -1,23 +1,4 @@
-# >>> managed by dotfiles >>>
-# 1. 默认忽略所有点开头的隐藏文件与隐藏目录 (AI 配置/本地缓存/会话历史等)
-.*
 
-# 2. 白名单放行：允许纳入版本控制的关键项目文件/目录
-!.gitignore
-!.gitattributes
-!.github/
-!.github/**
-!.env.example
-!.nvmrc
-!.obsidian/
-!.obsidian/**
-!.scratch/
-!.scratch/**
-
-# 3. 忽略由全局下发覆盖的 Agent 规则
-AGENTS.md
-CLAUDE.md
-# <<< managed by dotfiles <<<
 
 # ============================================================
 # Python (GitHub official Python.gitignore template)
@@ -189,3 +170,24 @@ cython_debug/
 # OS
 .DS_Store
 Thumbs.db
+
+# >>> managed by dotfiles >>>
+# 1. 默认忽略所有点开头的隐藏文件与隐藏目录 (AI 配置/本地缓存/会话历史等)
+.*
+
+# 2. 白名单放行：允许纳入版本控制的关键项目文件/目录
+!.gitignore
+!.gitattributes
+!.github/
+!.github/**
+!.env.example
+!.nvmrc
+!.obsidian/
+!.obsidian/**
+!.scratch/
+!.scratch/**
+
+# 3. 忽略由全局下发覆盖的 Agent 规则
+AGENTS.md
+CLAUDE.md
+# <<< managed by dotfiles <<<
