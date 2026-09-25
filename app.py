@@ -2,6 +2,7 @@
 """fileweb —— 手机优先的极简文件查看/编辑器（零依赖，仅标准库）"""
 import hashlib
 import json
+import mimetypes
 import os
 import subprocess
 import sys
@@ -12,7 +13,7 @@ from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, unquote
 
 ROOT = Path(os.environ.get("ONE_FILES_ROOT", str(Path.home() / "onespace" / "github"))).resolve()
 PASSWORD = os.environ.get("ONE_FILES_PASSWORD") or os.environ.get("common_password") or ""
@@ -170,7 +171,34 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_list(q.get("path", [""])[0])
         if u.path == "/api/file":
             return self.api_read(q.get("path", [""])[0])
+        if u.path.startswith("/raw/"):
+            return self.api_raw(unquote(u.path[5:]))
         self._send(404, "not found", "text/plain")
+
+    def api_raw(self, rel):
+        try:
+            p = safe_path(rel)
+        except PermissionError as e:
+            return self._send(403, str(e), "text/plain; charset=utf-8")
+        if p.is_dir():
+            idx = p / "index.html"
+            if idx.is_file():
+                p = idx
+            else:
+                return self._send(404, "不是文件", "text/plain; charset=utf-8")
+        if not p.is_file():
+            return self._send(404, "文件不存在", "text/plain; charset=utf-8")
+        ctype, _ = mimetypes.guess_type(p.name)
+        if not ctype:
+            ctype = "application/octet-stream"
+        elif ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
+            ctype += "; charset=utf-8"
+        try:
+            content = p.read_bytes()
+        except OSError as e:
+            return self._send(500, f"读取失败: {e}", "text/plain; charset=utf-8")
+        return self._send(200, content, ctype)
+
 
     def api_list(self, rel):
         try:
