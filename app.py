@@ -4,6 +4,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -259,6 +260,8 @@ class Handler(BaseHTTPRequestHandler):
             with _LOCK:
                 p.write_text(data.get("content", ""), encoding="utf-8")
             return self._json({"ok": True})
+        if u.path == "/api/delete":
+            return self.api_delete()
         if u.path == "/api/upload":
             return self.api_upload()
         if u.path == "/api/sync":
@@ -295,6 +298,23 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 return self._json({"error": err, "log": log}, 400)
             return self._json({"ok": True, "repo": root.name, "log": log})
+
+    def api_delete(self):
+        """删除文件或文件夹（目录连内容一起删），不可撤销"""
+        try:
+            p = safe_path(json.loads(self._body().decode()).get("path", ""))
+        except (PermissionError, ValueError) as e:
+            return self._json({"error": f"请求无效: {e}"}, 400)
+        if p == ROOT:
+            return self._json({"error": "不能删除根目录"}, 400)
+        if not p.exists():
+            return self._json({"error": "文件或文件夹不存在"}, 400)
+        with _LOCK:
+            try:
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
+            except OSError as e:
+                return self._json({"error": f"删除失败: {e}"}, 400)
+        return self._json({"ok": True})
 
     def api_upload(self):
         try:
