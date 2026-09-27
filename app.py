@@ -42,6 +42,18 @@ def human(n):
     return f"{n:.0f}T"
 
 
+def check_name(name):
+    """新建/重命名共用的取名规则：合法返回空串，否则返回中文错误"""
+    if not name or "/" in name or "\\" in name or name in (".", "..") \
+            or any(ord(c) < 32 for c in name):      # 拦换行等控制字符
+        return "名称无效"
+    if len(name.encode()) > 255:
+        return "名称过长"
+    if name == ".git":                              # 误建会让目录被认成仓库，同步必挂
+        return "不能用作 .git"
+    return ""
+
+
 def unique_path(dest):
     """重名不覆盖：name.ext → name 1.ext → name 2.ext ..."""
     if not dest.exists():
@@ -262,6 +274,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if u.path == "/api/delete":
             return self.api_delete()
+        if u.path == "/api/create":
+            return self.api_create()
+        if u.path == "/api/rename":
+            return self.api_rename()
         if u.path == "/api/upload":
             return self.api_upload()
         if u.path == "/api/sync":
@@ -316,6 +332,57 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": f"删除失败: {e}"}, 400)
         return self._json({"ok": True})
 
+    def api_create(self):
+        """在当前目录新建文件夹或空文件；重名直接报错，不覆盖不改名"""
+        try:
+            data = json.loads(self._body().decode())
+            p = safe_path(data.get("path", ""))
+        except (PermissionError, ValueError) as e:
+            return self._json({"error": f"请求无效: {e}"}, 400)
+        name = (data.get("name") or "").strip()
+        kind = data.get("type")
+        err = check_name(name)
+        if err:
+            return self._json({"error": err}, 400)
+        if kind not in ("dir", "file"):
+            return self._json({"error": "类型无效"}, 400)
+        if not p.is_dir():
+            return self._json({"error": "当前目录不存在"}, 400)
+        dest = p / name
+        with _LOCK:                                     # 检查与创建同锁，防并发覆盖同名
+            if dest.is_symlink() or dest.exists():      # 断链软链 exists() 为假，会顺链写出去
+                return self._json({"error": "已存在同名，请换个名字"}, 400)
+            try:
+                dest.mkdir() if kind == "dir" else dest.write_text("", encoding="utf-8")
+            except OSError as e:
+                return self._json({"error": f"新建失败: {e}"}, 400)
+        return self._json({"ok": True, "path": str(dest.relative_to(ROOT))})
+
+    def api_rename(self):
+        """重命名文件或文件夹；新名已存在则报错，不覆盖"""
+        try:
+            data = json.loads(self._body().decode())
+            p = safe_path(data.get("path", ""))
+        except (PermissionError, ValueError) as e:
+            return self._json({"error": f"请求无效: {e}"}, 400)
+        name = (data.get("name") or "").strip()
+        err = check_name(name)
+        if err:
+            return self._json({"error": err}, 400)
+        if p == ROOT:
+            return self._json({"error": "不能重命名根目录"}, 400)
+        if p.is_symlink() or not p.exists():
+            return self._json({"error": "文件或文件夹不存在"}, 400)
+        dest = p.with_name(name)
+        with _LOCK:                                     # 检查与改名同锁，防并发覆盖同名
+            if dest.is_symlink() or dest.exists():
+                return self._json({"error": "已存在同名，请换个名字"}, 400)
+            try:
+                p.rename(dest)
+            except OSError as e:
+                return self._json({"error": f"重命名失败: {e}"}, 400)
+        return self._json({"ok": True, "path": str(dest.relative_to(ROOT))})
+
     def api_upload(self):
         try:
             # email 解析需要消息头，补上 Content-Type 再喂给 BytesParser
@@ -340,6 +407,8 @@ class Handler(BaseHTTPRequestHandler):
             if name in ("", ".", ".."):
                 return self._json({"error": "文件名无效"}, 400)
             dest = unique_path(p / name)
+            if dest.is_symlink():      # 断链软链 exists() 为假，不拦就会顺链写到 ROOT 外
+                return self._json({"error": "已存在同名软链，换个名字再传"}, 400)
             data = fp.get_payload(decode=True)
             if len(data) > MAX_UPLOAD_SIZE:
                 return self._json({"error": f"超过 {human(MAX_UPLOAD_SIZE)} 上限"}, 400)

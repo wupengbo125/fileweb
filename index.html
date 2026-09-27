@@ -148,6 +148,8 @@
 <input type="file" id="fileinp" hidden>
 <div class="mask" id="mask" hidden></div>
 <div class="menu" id="menu" hidden>
+  <button id="miNewDir">新建文件夹</button>
+  <button id="miNewFile">新建文件</button>
   <button id="miUpload">选择文件上传</button>
   <button id="miSync">同步 GitHub 仓库</button>
 </div>
@@ -208,17 +210,20 @@ function closeRow() {
   if (openRow) { slide(openRow, 0, true); openRow = null; }
 }
 
-function bindSwipe(row) {
-  let id = null, x0 = 0, y0 = 0, dx = 0, axis = null;
+function bindSwipe(row, path, name) {
+  let id = null, x0 = 0, y0 = 0, dx = 0, axis = null, lp = null;
+  const cancelLP = () => { clearTimeout(lp); lp = null; };
   row.addEventListener("pointerdown", e => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     id = e.pointerId; x0 = e.clientX; y0 = e.clientY; dx = 0; axis = null;
+    lp = setTimeout(() => { lp = null; row.longpressed = true; rename(path, name); }, 600);
   });
   row.addEventListener("pointermove", e => {
     if (id === null || e.pointerId !== id) return;
     const mx = e.clientX - x0, my = e.clientY - y0;
     if (axis === null) {
       if (Math.abs(mx) < 6 && Math.abs(my) < 6) return;
+      cancelLP();
       axis = Math.abs(mx) > Math.abs(my) ? "x" : "y";
       if (axis === "x") {                       // 横向手势归我们，纵向留给页面滚动
         row.setPointerCapture(id);
@@ -233,6 +238,7 @@ function bindSwipe(row) {
   });
   const end = e => {
     if (id === null || e.pointerId !== id) return;
+    cancelLP();
     const wasX = axis === "x";
     id = null; axis = null;
     if (!wasX) return;
@@ -258,6 +264,19 @@ async function remove(path, name, wrap) {
   wrap.remove();
   toast("已删除 " + name);
   document.getElementById("empty").hidden = document.getElementById("group").children.length > 0;
+}
+
+async function rename(path, name) {
+  const nm = (prompt("重命名", name) || "").trim();
+  if (!nm || nm === name) return;
+  const d = await api("/api/rename", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, name: nm })
+  });
+  if (!d || !d.ok) { if (d && d.error) fail("重命名失败", d.error); return; }
+  toast("已重命名为 " + d.path.split("/").pop());
+  render(cur);
 }
 
 function updateNav() {
@@ -300,11 +319,12 @@ async function render(p) {
       (e.type === "file" ? `<span class="meta">${e.mtime}${e.size ? " · " + e.size : ""}</span>` : "") +
       SVG_CHEV;
     row.onclick = () => {
+      if (row.longpressed) { row.longpressed = false; return; }   // 长按刚弹过重命名
       if (row.swiped) { row.swiped = false; return; }
       if (openRow) return closeRow();           // 有行开着：这一下只用来收起
       e.type === "dir" ? navigate(rel(p, e.name)) : open(rel(p, e.name), e.name);
     };
-    bindSwipe(row);
+    bindSwipe(row, rel(p, e.name), e.name);
     wrap.append(del, row);
     g.appendChild(wrap);
   }
@@ -476,8 +496,26 @@ const menu = document.getElementById("menu"), mask = document.getElementById("ma
 const showMenu = v => { menu.hidden = mask.hidden = !v; };
 fab.onclick = () => showMenu(menu.hidden);
 mask.onclick = () => showMenu(false);
+document.getElementById("miNewDir").onclick = () => create("dir");
+document.getElementById("miNewFile").onclick = () => create("file");
 document.getElementById("miUpload").onclick = () => { showMenu(false); fileinp.click(); };
 document.getElementById("miSync").onclick = () => { showMenu(false); sync(); };
+
+async function create(kind) {
+  showMenu(false);
+  const name = (prompt(kind === "dir" ? "新建文件夹名称" : "新建文件名称") || "").trim();
+  if (!name) return;                          // 取消或只填空格：不发请求
+  const d = await api("/api/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: cur, name, type: kind })
+  });
+  if (!d || !d.ok) { if (d && d.error) fail("新建失败", d.error); return; }
+  const nm = d.path.split("/").pop();          // 以服务端返回的名字为准
+  toast((kind === "dir" ? "已新建文件夹 " : "已新建文件 ") + nm);
+  await render(cur);                          // 刷完列表再进编辑页，关掉就能看到新条目
+  if (kind === "file") open(d.path, nm);   // 新建的文件直接进编辑页
+}
 
 async function sync() {
   fab.disabled = true;

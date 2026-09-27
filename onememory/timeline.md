@@ -6,3 +6,4 @@
 - 2026-09-20 [fw-20260920-a1] app.py：api_upload 换 email.parser（cgi 移除）；_LOCK 防并发
 - 2026-09-20 19:00 [12046848243714] .gitignore 加 GitHub Python 模板；git rm --cached __pycache__
 - 2026-09-25 09:24 [79089a8f-d99f-4aae-930f-f9015988775d] 支持网页预览：app.py增/raw/路由，index.html增预览与iframe
+- 2026-09-28 00:56 [cea47261-445b-4d76-a384-e665ba427b52] fileweb 加新建目录/文件与重命名：/api/create、/api/rename、check_name、软链预检
