@@ -29,6 +29,8 @@ ONE_FILES_PASSWORD=xxx ONE_FILES_PORT=8766 python3 app.py
 | `ONE_FILES_PASSWORD` | 登录密码（必填其一） | — |
 | `common_password` | 登录密码，`ONE_FILES_PASSWORD` 的兜底 | — |
 | `ONE_FILES_PORT` | 监听端口 | `8766` |
+| `ONE_SYNC_ZIP_DIR` | carefree.zip 的暂存 Git 仓（提交推送源） | `~/onespace/github/carefree-sync` |
+| `ONE_SYNC_ZIP_REPO` | 真 carefree 仓（只做 ff-only 拉取） | `~/onespace/github/carefree` |
 
 ### 公网访问
 
@@ -59,6 +61,7 @@ Restart=always
 | GET | `/api/list?path=` | 列目录，返回 dirs + files |
 | GET | `/api/file?path=` | 读文本文件内容 |
 | POST | `/api/file` | `{"path": "", "content": ""}` 写文件 |
+| POST | `/api/deploy` | 上传 `carefree.zip`：覆盖式解压进暂存仓 → 提交推送 → 真仓 ff-only 拉取 |
 
 ## License
 

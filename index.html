@@ -146,11 +146,13 @@
   <svg width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
 </button>
 <input type="file" id="fileinp" hidden>
+<input type="file" id="zipinp" accept=".zip,application/zip" hidden>
 <div class="mask" id="mask" hidden></div>
 <div class="menu" id="menu" hidden>
   <button id="miNewDir">新建文件夹</button>
   <button id="miNewFile">新建文件</button>
   <button id="miUpload">选择文件上传</button>
+  <button id="miCarefree">同步 carefree</button>
   <button id="miSync">同步 GitHub 仓库</button>
 </div>
 <div class="safe-bottom"></div>
@@ -491,7 +493,7 @@ document.getElementById("fwd").onclick = () => {
 };
 
 // ---- 加号菜单 ----
-const fab = document.getElementById("fab"), fileinp = document.getElementById("fileinp");
+const fab = document.getElementById("fab"), fileinp = document.getElementById("fileinp"), zipinp = document.getElementById("zipinp");
 const menu = document.getElementById("menu"), mask = document.getElementById("mask");
 const showMenu = v => { menu.hidden = mask.hidden = !v; };
 fab.onclick = () => showMenu(menu.hidden);
@@ -499,6 +501,7 @@ mask.onclick = () => showMenu(false);
 document.getElementById("miNewDir").onclick = () => create("dir");
 document.getElementById("miNewFile").onclick = () => create("file");
 document.getElementById("miUpload").onclick = () => { showMenu(false); fileinp.click(); };
+document.getElementById("miCarefree").onclick = () => { showMenu(false); zipinp.click(); };
 document.getElementById("miSync").onclick = () => { showMenu(false); sync(); };
 
 async function create(kind) {
@@ -544,6 +547,21 @@ fileinp.onchange = async () => {
   fileinp.value = "";
   if (d && d.ok) { toast("已上传 " + d.name); render(cur); }
   else if (d) toast(d.error || "上传失败");
+};
+
+zipinp.onchange = async () => {
+  const f = zipinp.files[0];
+  if (!f) return;
+  fab.disabled = true;
+  toast("同步中…", true);      // 解压 + 提交推送 + 真仓拉取，耗时较长，提示常驻到结果出来
+  const fd = new FormData();
+  fd.append("file", f);
+  const d = await api("/api/deploy", { method: "POST", body: fd });
+  fab.disabled = false;
+  hideToast();
+  zipinp.value = "";
+  if (d && d.ok) { okFlash(); render(cur); }
+  else if (d) fail("同步失败", d.error, d.log);
 };
 
 render("");
