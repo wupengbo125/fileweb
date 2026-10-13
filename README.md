@@ -29,8 +29,7 @@ ONE_FILES_PASSWORD=xxx ONE_FILES_PORT=8766 python3 app.py
 | `ONE_FILES_PASSWORD` | 登录密码（必填其一） | — |
 | `common_password` | 登录密码，`ONE_FILES_PASSWORD` 的兜底 | — |
 | `ONE_FILES_PORT` | 监听端口 | `8766` |
-| `ONE_SYNC_ZIP_DIR` | carefree.zip 的暂存 Git 仓（提交推送源） | `~/onespace/github/carefree-sync` |
-| `ONE_SYNC_ZIP_REPO` | 真 carefree 仓（只做 ff-only 拉取） | `~/onespace/github/carefree` |
+| `ONE_SYNC_BASE` | 项目包同步的暂存仓根目录（提交推送源） | `~/onespace/hsgithub` |
 
 ### 公网访问
 
@@ -61,7 +60,9 @@ Restart=always
 | GET | `/api/list?path=` | 列目录，返回 dirs + files |
 | GET | `/api/file?path=` | 读文本文件内容 |
 | POST | `/api/file` | `{"path": "", "content": ""}` 写文件 |
-| POST | `/api/deploy` | 上传 `carefree.zip`：覆盖式解压进暂存仓 → 提交推送 → 真仓 ff-only 拉取 |
+| POST | `/api/deploy` | 上传 `<项目名>.zip`：覆盖式解压进 `ONE_SYNC_BASE/<项目名>` → 提交推送 → `ONE_FILES_ROOT/<项目名>` ff-only 拉取 |
+
+zip 文件名（去掉 `.zip`）就是项目名，真仓取 `ONE_FILES_ROOT/<项目名>`；暂存仓不存在时从真仓拷 `.git` 建出来。
 
 ## License
 

@@ -22,9 +22,8 @@ ROOT = Path(os.environ.get("ONE_FILES_ROOT", str(Path.home() / "onespace" / "git
 PASSWORD = os.environ.get("ONE_FILES_PASSWORD") or os.environ.get("common_password") or ""
 MAX_EDIT_SIZE = 2 * 1024 * 1024
 MAX_UPLOAD_SIZE = 200 * 1024 * 1024
-# carefree.zip 同步：暂存仓（提交推送源）与真仓（只做 ff-only 拉取）
-ZIP_DIR = Path(os.environ.get("ONE_SYNC_ZIP_DIR", "~/onespace/github/carefree-sync")).expanduser()
-ZIP_REPO = Path(os.environ.get("ONE_SYNC_ZIP_REPO", "~/onespace/github/carefree")).expanduser()
+# 项目包同步：暂存仓根目录（提交推送源），真仓取 ROOT/<项目名>（只做 ff-only 拉取）
+STAGE_BASE = Path(os.environ.get("ONE_SYNC_BASE", "~/onespace/hsgithub")).expanduser()
 TOKEN = hashlib.sha256(PASSWORD.encode()).hexdigest()
 COOKIE = "of_session"
 HERE = Path(__file__).resolve().parent
@@ -112,70 +111,77 @@ def sync_repo(root):
     return True, "", log
 
 
-def deploy_zip(data):
-    """覆盖式解压 carefree.zip 到暂存仓 → 提交推送 → 真仓 ff-only 拉取；
-    返回 (ok, 错误信息, log)。目录须是已存在的 Git 仓，不自动创建/clone"""
+def deploy_zip(name, data):
+    """把 <name>.zip 覆盖式解压进暂存仓 STAGE_BASE/<name> → 提交推送 →
+    真仓 ROOT/<name> ff-only 拉取；返回 (ok, 错误信息, log)。
+    暂存仓不存在时从真仓拷 .git 建出来，之后一直复用"""
     log = []
-    for label, d in (("暂存目录", ZIP_DIR), ("真仓", ZIP_REPO)):
-        if not (d / ".git").is_dir():
-            return False, f"{label} {d} 不是 Git 仓库", log
+    stage, real = STAGE_BASE / name, ROOT / name
     try:
-        code, out = git(ZIP_DIR, "pull")
+        if not (stage / ".git").is_dir():        # 首次：拷真仓的 .git（不拷 1.3G 工作区）
+            if not (real / ".git").is_dir():
+                return False, f"真仓 {real} 不存在或不是 Git 仓库", log
+            shutil.copytree(real / ".git", stage / ".git")
+            code, out = git(stage, "reset", "--hard")   # 拷来的仓工作区是空的，按 HEAD 铺出来
+            log.append(f"git reset --hard → {out.splitlines()[0] if out else 'ok'}")
+            if code:
+                return False, out or "git reset 失败", log
+        code, out = git(stage, "pull")
         log.append(f"git pull → {out.splitlines()[0] if out else 'ok'}")
         if code:
             return False, out or "git pull 失败", log
         # 先整体校验再动工作区：坏包不能把暂存仓清空
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            for name in z.namelist():
-                segs = name.split("/")
-                if name.startswith("/") or ".." in segs or ".git" in segs:
-                    return False, f"压缩包内含非法路径: {name}", log
-            for p in ZIP_DIR.iterdir():      # 校验通过才清空工作区，只留 .git
+            for item in z.namelist():
+                segs = item.split("/")
+                if item.startswith("/") or ".." in segs or ".git" in segs:
+                    return False, f"压缩包内含非法路径: {item}", log
+            for p in stage.iterdir():        # 校验通过才清空工作区，只留 .git
                 if p.name == ".git":
                     continue
                 if p.is_dir() and not p.is_symlink():
                     shutil.rmtree(p)
                 else:
                     p.unlink()
-            z.extractall(ZIP_DIR)
+            z.extractall(stage)
             for zi in z.infolist():          # extractall 不还原权限位，执行位会丢
                 mode = (zi.external_attr >> 16) & 0o777
                 if zi.create_system == 3 and mode:
-                    os.chmod(ZIP_DIR / zi.filename, mode)
+                    os.chmod(stage / zi.filename, mode)
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as e:
         # RuntimeError：加密包；NotImplementedError：未知压缩法
         return False, f"不是有效的 zip: {e}", log
     except subprocess.TimeoutExpired:
         return False, "同步超时", log
 
-    items = [p for p in ZIP_DIR.iterdir() if p.name != ".git"]
+    items = [p for p in stage.iterdir() if p.name != ".git"]
     if len(items) == 1 and items[0].is_dir():    # 拆平：包内只有一个顶层目录
         top = items[0]
         for p in top.iterdir():
-            shutil.move(str(p), str(ZIP_DIR / p.name))
+            shutil.move(str(p), str(stage / p.name))
         top.rmdir()
 
     try:
-        code, out = git(ZIP_DIR, "add", "-A")
+        code, out = git(stage, "add", "-A")
         log.append(f"git add -A → {out.splitlines()[0] if out else 'ok'}")
         if code:
             return False, out or "git add 失败", log
-        if git(ZIP_DIR, "diff", "--cached", "--quiet")[0]:
+        if git(stage, "diff", "--cached", "--quiet")[0]:
             stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            code, out = git(ZIP_DIR, "commit", "--no-verify", "-m", f"sync: carefree.zip {stamp}")
+            code, out = git(stage, "commit", "--no-verify", "-m", f"sync: {name}.zip {stamp}")
             log.append(f"git commit --no-verify → {out.splitlines()[0] if out else 'ok'}")
             if code:
                 return False, out or "git commit 失败", log
         else:
             log.append("无改动，跳过")
-        code, out = git(ZIP_DIR, "push")
+        code, out = git(stage, "push")
         log.append(f"git push → {out.splitlines()[0] if out else 'ok'}")
         if code:
             return False, out or "git push 失败", log
-        code, out = git(ZIP_REPO, "pull", "--ff-only")
+        code, out = git(real, "pull", "--ff-only")
         log.append(f"git pull --ff-only → {out.splitlines()[0] if out else 'ok'}")
         if code:                                 # push 已成功，真仓拉取失败不回滚
-            return False, f"已推送，但 {ZIP_REPO.name} 拉取失败", log
+            return False, f"已推送，但 {name} 拉取失败", log
     except subprocess.TimeoutExpired:
         return False, "同步超时", log
     return True, "", log
@@ -508,16 +514,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"上传失败: {e}"}, 400)
 
     def api_deploy(self):
-        """上传 carefree.zip → 覆盖式解压进暂存仓 → 提交推送 → 真仓 ff-only 拉取"""
+        """上传 <项目名>.zip → 覆盖式解压进暂存仓 → 提交推送 → 真仓 ff-only 拉取"""
         try:
             _, fp = self._multipart()      # 表单只需要文件 part，普通字段用不上
             if fp is None or not fp.get_filename():
                 return self._json({"error": "没有文件"}, 400)
+            # 文件名只取 basename（防路径穿越），去 .zip 后缀即项目名
+            name = os.path.basename(fp.get_filename().replace("\\", "/")).removesuffix(".zip")
+            err = check_name(name)
+            if err:
+                return self._json({"error": err}, 400)
             data = fp.get_payload(decode=True)
             if len(data) > MAX_UPLOAD_SIZE:
                 return self._json({"error": f"超过 {human(MAX_UPLOAD_SIZE)} 上限"}, 400)
             with _LOCK:
-                ok, err, log = deploy_zip(data)
+                ok, err, log = deploy_zip(name, data)
             if not ok:
                 return self._json({"error": err, "log": log}, 400)
             return self._json({"ok": True, "log": log})

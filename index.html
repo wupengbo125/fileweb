@@ -152,7 +152,7 @@
   <button id="miNewDir">新建文件夹</button>
   <button id="miNewFile">新建文件</button>
   <button id="miUpload">选择文件上传</button>
-  <button id="miCarefree">同步 carefree</button>
+  <button id="miDeploy">同步项目包</button>
   <button id="miSync">同步 GitHub 仓库</button>
 </div>
 <div class="safe-bottom"></div>
@@ -501,7 +501,7 @@ mask.onclick = () => showMenu(false);
 document.getElementById("miNewDir").onclick = () => create("dir");
 document.getElementById("miNewFile").onclick = () => create("file");
 document.getElementById("miUpload").onclick = () => { showMenu(false); fileinp.click(); };
-document.getElementById("miCarefree").onclick = () => { showMenu(false); zipinp.click(); };
+document.getElementById("miDeploy").onclick = () => { showMenu(false); zipinp.click(); };
 document.getElementById("miSync").onclick = () => { showMenu(false); sync(); };
 
 async function create(kind) {
