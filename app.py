@@ -5,6 +5,7 @@ import io
 import json
 import mimetypes
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -187,6 +188,376 @@ def deploy_zip(name, data):
     return True, "", log
 
 
+# ---------- markdown 预览渲染（纯标准库，够用即可，非完整 CommonMark） ----------
+# 安全模型：预览页是同源 iframe、带会话 cookie、能调 /api/* 改文件。
+# 因此所有文本先转义再拼装，md 里的裸 HTML 一律当文本；链接/图片 URL 走白名单，
+# javascript:/data:/vbscript: 等一律降级为纯文本，不生成可点链接。
+_RE_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_RE_HR = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
+_RE_HEAD = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$")
+_RE_QUOTE = re.compile(r"^ {0,3}>[ \t]?")
+_RE_ITEM = re.compile(r"^(\s*)([-*+]|\d{1,9}[.)])[ \t]+(.*)$")
+_RE_TDELIM = re.compile(r"^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$")
+_RE_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
+_RE_CODE = re.compile(r"`([^`\n]+)`")
+_RE_IMG = re.compile(r'!\[([^\]]*)\]\(([^)\s]+)\)')
+_RE_LINK = re.compile(r'\[([^\]]+)\]\(([^)\s]+)\)')
+_RE_BOLD_S = re.compile(r"\*\*(?!\s)([^*]+?)(?<!\s)\*\*")
+_RE_BOLD_U = re.compile(r"(?<!\w)__(?!\s)([^_]+?)(?<!\s)__(?!\w)")
+_RE_ITAL_S = re.compile(r"\*(?!\s)([^*]+?)(?<!\s)\*")
+_RE_ITAL_U = re.compile(r"(?<!\w)_(?!\s)([^_]+?)(?<!\s)_(?!\w)")
+_RE_DEL = re.compile(r"~~(?!\s)([^~]+?)(?<!\s)~~")
+_RE_PLACEHOLDER = re.compile(r"\x00(\d+)\x00")
+
+_MD_CSS = """
+:root{--ink:#1d1d1f;--muted:#7a7a7a;--primary:#0066cc;--parchment:#f5f5f7;--hairline:#e0e0e0}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#fff;color:var(--ink);font-family:system-ui,-apple-system,"SF Pro Text",sans-serif;font-size:16px;line-height:1.6;letter-spacing:-.2px}
+main{max-width:760px;margin:0 auto;padding:20px 16px 64px}
+h1,h2,h3,h4,h5,h6{font-family:system-ui,-apple-system,"SF Pro Display",sans-serif;font-weight:600;line-height:1.3;margin:1.3em 0 .55em}
+h1{font-size:28px}h2{font-size:23px}h3{font-size:19px}h4,h5,h6{font-size:16px}
+main>:first-child{margin-top:0}
+p{margin:.65em 0}
+a{color:var(--primary);text-decoration:none}
+code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;background:var(--parchment);border-radius:5px;padding:.1em .36em}
+pre{background:var(--parchment);border-radius:10px;padding:12px 14px;overflow:auto;margin:.8em 0}
+pre code{background:none;padding:0;font-size:14px;line-height:1.5}
+blockquote{margin:.8em 0;padding:.15em 0 .15em 14px;border-left:3px solid var(--hairline);color:var(--muted)}
+blockquote p{margin:.3em 0}
+hr{border:0;border-top:1px solid var(--hairline);margin:1.6em 0}
+ul,ol{margin:.65em 0;padding-left:1.5em}
+li{margin:.22em 0}
+table{border-collapse:collapse;width:100%;margin:.9em 0;font-size:15px}
+th,td{border:1px solid var(--hairline);padding:7px 10px;text-align:left}
+th{background:var(--parchment);font-weight:600}
+img{max-width:100%;height:auto}
+del{color:var(--muted)}
+"""
+
+
+def esc(s):
+    """转义 HTML 文本（& < > "），顺手去掉 NUL（行内占位符的分隔符）"""
+    return (s.replace("\x00", "")
+             .replace("&", "&amp;").replace("<", "&lt;")
+             .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def safe_url(url):
+    """URL 白名单：http/https/mailto/相对路径/#锚点 放行（返回原串），
+    其余（javascript:/data:/vbscript:/协议相对 // 及反斜杠变体）返回 None，调用方降级为纯文本"""
+    u = url.strip()
+    if not u or any(c.isspace() or ord(c) < 0x20 for c in u):
+        return None                    # 含空白/控制字符：浏览器解析 URL 时会剥掉，直接拒
+    low = u.lower()
+    if low.startswith(("http://", "https://", "mailto:")):
+        return u
+    if u.startswith("#"):
+        return u
+    if _RE_SCHEME.match(u) or u.startswith(("//", "\\\\", "/\\", "\\/")):
+        return None                    # 协议相对（含反斜杠变体，浏览器会规范成外域 http）
+    return u
+
+
+def _inline(t, stash):
+    """行内样式替换；t 必须是已转义文本，stash 为代码段占位符栈（递归调用共享）。
+    占位符在中间层不还原——否则链接文本里的 <code> 会被外层粗斜体正则污染，
+    统一留到 inline() 所有样式替换做完后单次还原。"""
+    def _code(m):
+        stash.append("<code>" + m.group(1) + "</code>")
+        return f"\x00{len(stash) - 1}\x00"
+
+    t = _RE_CODE.sub(_code, t)         # 代码段优先级最高，先存起来防止被行内规则二次处理
+
+    def _img(m):
+        src = safe_url(m.group(2))
+        if src is None:
+            return m.group(1)          # 降级：只留 alt 文本（已转义）
+        return f'<img src="{src}" alt="{m.group(1)}">'
+
+    t = _RE_IMG.sub(_img, t)
+
+    def _link(m):
+        url = safe_url(m.group(2))
+        if url is None:
+            return f"{m.group(1)} ({m.group(2)})"   # 降级纯文本（已转义）
+        return f'<a href="{url}">{_inline(m.group(1), stash)}</a>'
+
+    t = _RE_LINK.sub(_link, t)
+    t = _RE_BOLD_S.sub(r"<strong>\1</strong>", t)
+    t = _RE_BOLD_U.sub(r"<strong>\1</strong>", t)
+    t = _RE_ITAL_S.sub(r"<em>\1</em>", t)
+    t = _RE_ITAL_U.sub(r"<em>\1</em>", t)
+    t = _RE_DEL.sub(r"<del>\1</del>", t)
+    return t                            # 占位符不在此处还原
+
+
+def inline(text):
+    stash = []
+    t = _inline(esc(text), stash)
+    return _RE_PLACEHOLDER.sub(lambda m: stash[int(m.group(1))], t)   # 样式全做完后统一还原
+
+
+def _dedent(line, n):
+    if line.startswith("\t"):
+        line = "    " + line[1:]
+    i = 0
+    while i < n and i < len(line) and line[i] == " ":
+        i += 1
+    return line[i:]
+
+
+def _split_row(ln):
+    s = ln.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in s.split("|")]
+
+
+def _align(cell):
+    l, r = cell.startswith(":"), cell.endswith(":")
+    return "center" if l and r else "right" if r else "left" if l else None
+
+
+def _al_attr(a):
+    return f' style="text-align:{a}"' if a else ""
+
+
+def _is_table_start(lines, i):
+    return i + 1 < len(lines) and "|" in lines[i] and bool(_RE_TDELIM.match(lines[i + 1]))
+
+
+def _paragraph(lines):
+    segs = []
+    for k, ln in enumerate(lines):
+        segs.append(inline(ln))
+        if k < len(lines) - 1:
+            segs.append("<br>" if re.search(r"[ \t]{2,}$", ln) else "\n")   # 行尾两空格=硬换行
+    return "<p>" + "".join(segs) + "</p>"
+
+
+def _table(lines, i):
+    head = _split_row(lines[i])
+    align = [_align(c) for c in _split_row(lines[i + 1])]
+    i += 2
+    n = len(lines)
+    body = []
+    while i < n and lines[i].strip() and "|" in lines[i]:
+        cells = _split_row(lines[i])
+        tds = "".join(f"<td{_al_attr(align[k] if k < len(align) else None)}>{inline(c)}</td>"
+                      for k, c in enumerate(cells))
+        body.append(f"<tr>{tds}</tr>")
+        i += 1
+    ths = "".join(f"<th{_al_attr(align[k] if k < len(align) else None)}>{inline(c)}</th>"
+                  for k, c in enumerate(head))
+    tb = f"<tbody>{''.join(body)}</tbody>" if body else ""
+    return f"<table><thead><tr>{ths}</tr></thead>{tb}</table>", i
+
+
+def _list_block(lines, i):
+    """解析列表（缩进进一级嵌套）。lines[i] 必须是列表项行，返回 (html, 下一行下标)"""
+    m0 = _RE_ITEM.match(lines[i])
+    base = len(m0.group(1))
+    ordered = m0.group(2)[0].isdigit()
+    items = []
+    n = len(lines)
+    while i < n:
+        ln = lines[i]
+        if not ln.strip():
+            j = i + 1
+            while j < n and not lines[j].strip():
+                j += 1
+            nm = _RE_ITEM.match(lines[j]) if j < n else None
+            if j < n and ((nm and len(nm.group(1)) > base)
+                          or (not nm and lines[j][:1] in (" ", "\t"))):
+                items[-1].append("")   # 空行后仍是本级内容：宽松列表，保留空行
+                i = j
+                continue
+            break
+        m = _RE_ITEM.match(ln)
+        if m and len(m.group(1)) <= base:
+            items.append([m.group(3)])
+            i += 1
+            continue
+        if ln[:1] in (" ", "\t"):
+            items[-1].append(_dedent(ln, base + 2))   # 缩进续行并入当前项
+            i += 1
+            continue
+        break
+    tight = all(not any(not x.strip() for x in it) for it in items)   # 无空行=紧凑列表
+    lis = []
+    for it in items:
+        while it and not it[-1].strip():
+            it.pop()
+        blocks = _blocks(it)
+        if tight and blocks and blocks[0].startswith("<p>") and blocks[0].endswith("</p>"):
+            blocks[0] = blocks[0][3:-4]
+        lis.append("<li>" + "".join(blocks) + "</li>")
+    tag = "ol" if ordered else "ul"
+    return f"<{tag}>{''.join(lis)}</{tag}>", i
+
+
+def _blocks(lines):
+    out, i, n = [], 0, len(lines)
+    while i < n:
+        ln = lines[i]
+        if not ln.strip():
+            i += 1
+            continue
+        m = _RE_FENCE.match(ln)
+        if m:                                    # 围栏代码块：语言标记忽略，内容原样转义
+            mark = m.group(1)
+            j = i + 1
+            code = []
+            while j < n:
+                cm = re.match(r"^ {0,3}(`{3,}|~{3,})[ \t]*$", lines[j])
+                if cm and cm.group(1)[0] == mark[0] and len(cm.group(1)) >= len(mark):
+                    break
+                code.append(lines[j])
+                j += 1
+            out.append("<pre><code>" + esc("\n".join(code)) + "</code></pre>")
+            i = j + 1 if j < n else n
+            continue
+        if _is_table_start(lines, i):
+            html, i = _table(lines, i)
+            out.append(html)
+            continue
+        if _RE_HR.match(ln):
+            out.append("<hr>")
+            i += 1
+            continue
+        m = _RE_HEAD.match(ln)
+        if m:
+            lvl = len(m.group(1))
+            out.append(f"<h{lvl}>{inline(m.group(2) or '')}</h{lvl}>")
+            i += 1
+            continue
+        if _RE_QUOTE.match(ln):
+            q = []
+            while i < n and _RE_QUOTE.match(lines[i]):
+                q.append(_RE_QUOTE.sub("", lines[i], count=1))
+                i += 1
+            out.append("<blockquote>" + "".join(_blocks(q)) + "</blockquote>")
+            continue
+        if _RE_ITEM.match(ln):
+            html, i = _list_block(lines, i)
+            out.append(html)
+            continue
+        para = []
+        while i < n and lines[i].strip() \
+                and not _RE_FENCE.match(lines[i]) and not _RE_HEAD.match(lines[i]) \
+                and not _RE_HR.match(lines[i]) and not _RE_QUOTE.match(lines[i]) \
+                and not _RE_ITEM.match(lines[i]) and not _is_table_start(lines, i):
+            para.append(lines[i])
+            i += 1
+        out.append(_paragraph(para))
+    return out
+
+
+def md_render(text):
+    """markdown 文本 → HTML 片段（不含 <html> 外壳）"""
+    return "".join(_blocks(text.splitlines()))
+
+
+def md_page(name, body):
+    """把渲染好的 HTML 片段包成完整页面（内联样式，色板跟主 UI 一致）"""
+    head = ('<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+            f"<title>{esc(name)}</title><style>{_MD_CSS}</style></head>\n<body><main>\n")
+    return head + body + "\n</main></body></html>"
+
+
+def _md_selftest():
+    """渲染器自检：python3 app.py --selftest"""
+    n_ok = 0
+    fails = []
+
+    def ck(name, cond, got):
+        nonlocal n_ok
+        if cond:
+            n_ok += 1
+        else:
+            fails.append((name, got))
+
+    h = md_render("# 一级\n## 二级\n###### 六级\n####### 七级不算")
+    ck("ATX 标题", "<h1>一级</h1>" in h and "<h2>二级</h2>" in h
+       and "<h6>六级</h6>" in h and "<h7" not in h and "七级不算" in h, h)
+
+    c = md_render("```python\nprint('<b>')\n**not bold**\n```")
+    ck("围栏代码块", "<pre><code>" in c and "print('&lt;b&gt;')" in c
+       and "<strong>" not in c and "<b>" not in c, c)
+
+    t = md_render("| 左 | 中 | 右 |\n|:---|:---:|---:|\n| a | b | c |")
+    ck("表格", "<table>" in t and "<th" in t and ">a</td>" in t
+       and 'text-align:center' in t and 'text-align:right' in t, t)
+
+    i = md_render("行内：`co&de`、**粗**、*斜*、~~删~~、[站](https://e.com/a?x=1&y=2)")
+    ck("行内格式", "<code>co&amp;de</code>" in i and "<strong>粗</strong>" in i
+       and "<em>斜</em>" in i and "<del>删</del>" in i, i)
+    ck("https 链接", '<a href="https://e.com/a?x=1&amp;y=2">站</a>' in i, i)
+
+    l = md_render("- 甲\n- 乙\n  - 乙一\n\n1. 一\n2. 二")
+    ck("无序列表", "<ul><li>甲</li>" in l, l)
+    ck("嵌套列表", "<li>乙<ul><li>乙一</li></ul></li>" in l, l)
+    ck("有序列表", "<ol><li>一</li><li>二</li></ol>" in l, l)
+
+    q = md_render("> 引用一层\n> \n> > 嵌套引用")
+    ck("引用", "<blockquote>" in q and "引用一层" in q and q.count("<blockquote>") == 2, q)
+
+    r = md_render("上文\n\n---\n\n***\n\n下文")
+    ck("分割线", r.count("<hr>") == 2 and "上文" in r and "下文" in r, r)
+
+    p = md_render("![图](./img/a.png)")
+    ck("相对路径图片", '<img src="./img/a.png" alt="图">' in p, p)
+
+    m = md_render("[锚](#top) [邮](mailto:a@b.c) [上](../up.md)")
+    ck("白名单链接", '<a href="#top">锚</a>' in m and '<a href="mailto:a@b.c">邮</a>' in m
+       and '<a href="../up.md">上</a>' in m, m)
+
+    x1 = md_render("<script>alert(1)</script>")
+    ck("XSS: script 转义", "&lt;script&gt;alert(1)&lt;/script&gt;" in x1 and "<script>" not in x1, x1)
+
+    x2 = md_render("[点我](javascript:alert(1))")
+    ck("XSS: javascript: 降级", "<a" not in x2 and "javascript:alert(1)" in x2, x2)
+
+    x3 = md_render("![x](data:text/html,<script>alert(1)</script>)")
+    ck("XSS: data: 图片降级", "<img" not in x3, x3)
+
+    x4 = md_render('<img src=x onerror="alert(1)">')
+    ck("XSS: 裸 HTML 转义", "&lt;img" in x4 and "<img" not in x4, x4)
+
+    x5 = md_render("[a](vbscript:msgbox(1)) [b](//evil.example)")
+    ck("XSS: vbscript/协议相对降级", "<a" not in x5, x5)
+
+    x6 = md_render('[q](https://e.com/"x")')
+    ck("URL 引号转义", 'href="https://e.com/&quot;x&quot;"' in x6, x6)
+
+    su = [safe_url("\\\\evil.com"), safe_url("/\\evil.com"), safe_url("\\/evil.com")]
+    ck("safe_url 反斜杠协议相对", all(x is None for x in su), str(su))
+
+    bs = md_render("[逃逸](\\\\evil.com)")
+    ck("反斜杠协议相对链接降级", "<a" not in bs and "evil.com" in bs, bs)
+
+    ci = md_render("[`*code*`](https://example.com)")
+    ck("链接文本内代码不被污染", '<a href="https://example.com"><code>*code*</code></a>' in ci, ci)
+
+    ti = md_render('[官网](https://example.com "首页")')
+    ck("title 语法降级纯文本", "<a" not in ti and "首页" in ti, ti)
+
+    pg = md_page("<hi>.md", md_render("# 页"))
+    ck("整页包装", "<!doctype html>" in pg and "<title>&lt;hi&gt;.md</title>" in pg
+       and "<style>" in pg and "--ink:#1d1d1f" in pg and "<h1>页</h1>" in pg, pg)
+
+    for name, got in fails:
+        print(f"FAIL {name} → {got[:200]}")
+    if fails:
+        print(f"自检失败：{len(fails)}/{n_ok + len(fails)} 项未过")
+        return 1
+    print(f"自检通过：{n_ok} 项")
+    return 0
+
+
 def login_page(err=""):
     return """<!doctype html><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>fileweb</title><link rel=icon type=image/png sizes=32x32 href=/favicon-32.png>
@@ -299,6 +670,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, "不是文件", "text/plain; charset=utf-8")
         if not p.is_file():
             return self._send(404, "文件不存在", "text/plain; charset=utf-8")
+        if p.suffix.lower() in (".md", ".markdown"):
+            # markdown 预览：渲染成完整 HTML 页（同源 iframe，样式内联）
+            try:
+                text = p.read_bytes().decode("utf-8-sig", errors="replace")
+            except OSError as e:
+                return self._send(500, f"读取失败: {e}", "text/plain; charset=utf-8")
+            return self._send(200, md_page(p.name, md_render(text)))
         ctype, _ = mimetypes.guess_type(p.name)
         if not ctype:
             ctype = "application/octet-stream"
@@ -544,4 +922,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(_md_selftest())
     main()

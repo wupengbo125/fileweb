@@ -59,6 +59,7 @@ Restart=always
 | --- | --- | --- |
 | GET | `/api/list?path=` | 列目录，返回 dirs + files |
 | GET | `/api/file?path=` | 读文本文件内容 |
+| GET | `/raw/<path>` | 原样返回文件字节；`.md`/`.markdown` 返回渲染后的 HTML 预览页 |
 | POST | `/api/file` | `{"path": "", "content": ""}` 写文件 |
 | POST | `/api/deploy` | 上传 `<项目名>.zip`：覆盖式解压进 `ONE_SYNC_BASE/<项目名>` → 提交推送 → `ONE_FILES_ROOT/<项目名>` ff-only 拉取 |
 

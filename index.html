@@ -401,8 +401,10 @@ async function open(path, name) {
   ta.value = d.content;
   savedVal = d.content;
   ta.scrollTop = 0; ln.style.transform = "translateY(0)"; renderLN();
-  const isHtml = name.toLowerCase().endsWith(".html") || name.toLowerCase().endsWith(".htm");
-  document.getElementById("previewBtn").hidden = !isHtml;
+  const lower = name.toLowerCase();
+  const previewable = lower.endsWith(".html") || lower.endsWith(".htm")
+    || lower.endsWith(".md") || lower.endsWith(".markdown");
+  document.getElementById("previewBtn").hidden = !previewable;
   if (isPreview) {
     document.getElementById("preview").src = "about:blank";
     document.getElementById("preview").style.display = "none";
