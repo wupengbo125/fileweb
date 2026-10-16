@@ -457,7 +457,7 @@ async function togglePreview() {
   const pBtn = document.getElementById("previewBtn");
   const sBtn = document.getElementById("saveBtn");
   if (!isPreview) {
-    if (ta.value !== savedVal) {
+    if (ta.value !== savedVal && !ta.readOnly) {
       await save();
     }
     frame.src = "/raw/" + curFile.split("/").map(encodeURIComponent).join("/") + "?t=" + Date.now();
@@ -471,7 +471,7 @@ async function togglePreview() {
     frame.style.display = "none";
     edbody.style.display = "flex";
     pBtn.textContent = "预览";
-    sBtn.hidden = false;
+    sBtn.hidden = ta.readOnly;
     isPreview = false;
   }
 }
@@ -496,6 +496,9 @@ async function open(path, name) {
     document.getElementById("saveBtn").hidden = false;
     isPreview = false;
   }
+  ta.readOnly = !!d.readonly;                  // 非 UTF-8：只读，不提供保存
+  document.getElementById("saveBtn").hidden = ta.readOnly;
+  if (ta.readOnly) { document.getElementById("filename").textContent = name + " · 非 UTF-8，只读"; toast("非 UTF-8 编码，只读打开"); }
   document.getElementById("editor").style.display = "flex";
   markActive();
 }
@@ -515,6 +518,7 @@ function closeEd() {
 }
 
 async function save() {
+  if (ta.readOnly) return;
   const d = await api("/api/file", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -531,7 +535,7 @@ function refresh() {
     return;
   }
   if (ta.value !== savedVal && !confirm("有未保存的修改，刷新将丢弃它们，继续？")) return;
-  open(curFile, document.getElementById("filename").textContent);
+  open(curFile, curFile.split("/").pop());
 }
 document.getElementById("refresh").onclick = refresh;
 

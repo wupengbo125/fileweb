@@ -734,8 +734,11 @@ class Handler(BaseHTTPRequestHandler):
         if b"\x00" in raw:
             return self._json({"error": "二进制文件，无法编辑"}, 400)
         # 去 BOM、CRLF→LF：与 textarea 归一化后的值一致，保存时再按原文件格式还原
-        text = raw.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
-        return self._json({"path": rel, "content": text})
+        try:
+            text, readonly = raw.decode("utf-8-sig"), False
+        except UnicodeDecodeError:              # 非 UTF-8：只读展示，绝不写回
+            text, readonly = raw.decode("utf-8-sig", errors="replace"), True
+        return self._json({"path": rel, "content": text.replace("\r\n", "\n"), "readonly": readonly})
 
     # ---------- POST ----------
     def do_POST(self):
@@ -758,7 +761,12 @@ class Handler(BaseHTTPRequestHandler):
             if not p.is_file():
                 return self._json({"error": "不是文件"}, 400)
             with _LOCK:
-                p.write_bytes(restore_format(p.read_bytes(), data.get("content", "")))
+                orig = p.read_bytes()
+                try:
+                    orig.decode("utf-8")
+                except UnicodeDecodeError:
+                    return self._json({"error": "非 UTF-8 文件，只读"}, 400)
+                p.write_bytes(restore_format(orig, data.get("content", "")))
             return self._json({"ok": True})
         if u.path == "/api/delete":
             return self.api_delete()
