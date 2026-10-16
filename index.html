@@ -206,6 +206,7 @@
   <button id="miUpload">选择文件上传</button>
   <button id="miDeploy">同步项目包</button>
   <button id="miSync">同步 GitHub 仓库</button>
+  <button id="miDot"></button>
 </div>
 
 <div id="editor">
@@ -393,7 +394,7 @@ async function render(p) {
   const g = document.getElementById("group");
   g.innerHTML = "";
   openRow = null;
-  const es = d.entries;
+  const es = d.entries.filter(e => showDot || !e.name.startsWith("."));   // 默认隐藏点文件
   document.getElementById("empty").hidden = es.length > 0;
   for (const e of es) {
     const wrap = document.createElement("div");
@@ -656,6 +657,15 @@ document.getElementById("miNewFile").onclick = () => create("file");
 document.getElementById("miUpload").onclick = () => { showMenu(false); fileinp.click(); };
 document.getElementById("miDeploy").onclick = () => { showMenu(false); zipinp.click(); };
 document.getElementById("miSync").onclick = () => { showMenu(false); sync(); };
+let showDot = localStorage.fwShowDot === "1";
+const miDot = document.getElementById("miDot");
+const dotLabel = () => { miDot.textContent = showDot ? "不显示隐藏文件" : "显示隐藏文件"; };
+dotLabel();
+miDot.onclick = () => {
+  showMenu(false);
+  showDot = !showDot; localStorage.fwShowDot = showDot ? "1" : "0";
+  dotLabel(); render(cur);
+};
 
 async function create(kind) {
   showMenu(false);
