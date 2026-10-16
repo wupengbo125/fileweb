@@ -72,6 +72,9 @@
   #filename { position: fixed; top: calc(env(safe-area-inset-top) + 40px); left: 0; right: 0;
     text-align: center; font-size: 12px; letter-spacing: -0.12px; color: var(--muted); z-index: 21; pointer-events: none; }
   #preview { flex: 1; width: 100%; height: 100%; border: 0; background: #fff; display: none; }
+  #imgview { flex: 1; display: none; align-items: center; justify-content: center; overflow: auto;
+    min-height: 0; padding: 16px; background: var(--parchment); }
+  #imgview img { max-width: 100%; max-height: 100%; }
   #edbody { flex: 1; display: flex; min-height: 0; background: var(--canvas); }
   #gutter { flex: none; width: 44px; overflow: hidden; background: var(--parchment);
     border-right: 1px solid var(--hairline); }
@@ -218,6 +221,7 @@
   </div>
   <div id="filename"></div>
   <iframe id="preview"></iframe>
+  <div id="imgview"><img id="img" alt=""></div>
   <div id="edbody">
     <div id="gutter"><pre id="ln"></pre></div>
     <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
@@ -452,7 +456,7 @@ let curName = "";
 const isDirty = () => !!curFile && !ta.readOnly && ta.value !== savedVal;
 function updateDirty() {
   document.getElementById("filename").textContent =
-    curName + (ta.readOnly ? " · 非 UTF-8，只读" : "") + (isDirty() ? " •" : "");
+    curName + (ta.readOnly && !curImg ? " · 非 UTF-8，只读" : "") + (isDirty() ? " •" : "");
 }
 const confirmDiscard = () => !isDirty() || confirm("有未保存的修改，确定放弃？");
 addEventListener("beforeunload", e => { if (isDirty()) { e.preventDefault(); e.returnValue = ""; } });
@@ -478,6 +482,15 @@ ta.addEventListener("keydown", e => {                    // Ctrl+X 无选区：�
 
 let isPreview = false;
 
+// ---- 图片：用 <img> 经 /raw 显示（SVG 也只放进 <img>，其中脚本不会执行） ----
+const IMG_RE = /\.(png|jpe?g|gif|webp)$/i, isSvg = n => /\.svg$/i.test(n);
+const rawUrl = p => "/raw/" + p.split("/").map(encodeURIComponent).join("/") + "?t=" + Date.now();
+let curImg = false;
+function showImg(on) {
+  document.getElementById("imgview").style.display = on ? "flex" : "none";
+  document.getElementById("img").src = on ? rawUrl(curFile) : "";
+}
+
 async function togglePreview() {
   const edbody = document.getElementById("edbody");
   const frame = document.getElementById("preview");
@@ -487,15 +500,16 @@ async function togglePreview() {
     if (ta.value !== savedVal && !ta.readOnly) {
       await save();
     }
-    frame.src = "/raw/" + curFile.split("/").map(encodeURIComponent).join("/") + "?t=" + Date.now();
     edbody.style.display = "none";
-    frame.style.display = "block";
+    if (isSvg(curName)) showImg(true);
+    else { frame.src = rawUrl(curFile); frame.style.display = "block"; }
     pBtn.textContent = "源码";
     sBtn.hidden = true;
     isPreview = true;
   } else {
     frame.src = "about:blank";
     frame.style.display = "none";
+    showImg(false);
     edbody.style.display = "flex";
     pBtn.textContent = "预览";
     sBtn.hidden = ta.readOnly;
@@ -504,7 +518,8 @@ async function togglePreview() {
 }
 
 async function open(path, name, fromPop) {
-  const d = await api("/api/file?path=" + encodeURIComponent(path));
+  const isImg = IMG_RE.test(name);
+  const d = isImg ? { content: "", readonly: true } : await api("/api/file?path=" + encodeURIComponent(path));
   if (!d || d.error) { if (d) toast(d.error || "打开失败"); return; }
   curFile = path;
   curName = name;
@@ -514,7 +529,7 @@ async function open(path, name, fromPop) {
   ta.scrollTop = 0; ln.style.transform = "translateY(0)"; renderLN();
   const lower = name.toLowerCase();
   const previewable = lower.endsWith(".html") || lower.endsWith(".htm")
-    || lower.endsWith(".md") || lower.endsWith(".markdown");
+    || lower.endsWith(".md") || lower.endsWith(".markdown") || isSvg(lower);
   document.getElementById("previewBtn").hidden = !previewable;
   if (isPreview) {
     document.getElementById("preview").src = "about:blank";
@@ -524,10 +539,13 @@ async function open(path, name, fromPop) {
     document.getElementById("saveBtn").hidden = false;
     isPreview = false;
   }
-  ta.readOnly = !!d.readonly;                  // 非 UTF-8：只读，不提供保存
+  ta.readOnly = !!d.readonly;                  // 非 UTF-8 / 图片：只读，不提供保存
   document.getElementById("saveBtn").hidden = ta.readOnly;
+  curImg = isImg;
+  document.getElementById("edbody").style.display = isImg ? "none" : "flex";
+  showImg(isImg);
   updateDirty();
-  if (ta.readOnly) toast("非 UTF-8 编码，只读打开");
+  if (ta.readOnly && !isImg) toast("非 UTF-8 编码，只读打开");
   document.getElementById("editor").style.display = "flex";
   markActive();
   if (fromPop) return;
@@ -573,6 +591,8 @@ function closeEd() {
     isPreview = false;
   }
   document.getElementById("editor").style.display = "none";
+  showImg(false); curImg = false;
+  document.getElementById("edbody").style.display = "flex";
   curFile = "";
   markActive();
   if (history.state && history.state.f) replaceSt({ d: cur, f: "" });
@@ -598,7 +618,8 @@ async function save(force) {
 function refresh() {
   if (!curFile) return render(cur);
   if (isPreview) {
-    document.getElementById("preview").src = "/raw/" + curFile.split("/").map(encodeURIComponent).join("/") + "?t=" + Date.now();
+    if (isSvg(curName)) showImg(true);
+    else document.getElementById("preview").src = rawUrl(curFile);
     return;
   }
   if (ta.value !== savedVal && !confirm("有未保存的修改，刷新将丢弃它们，继续？")) return;
