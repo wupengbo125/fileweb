@@ -592,6 +592,17 @@ def restore_format(orig, text):
     return (b"\xef\xbb\xbf" if bom else b"") + text.encode("utf-8")
 
 
+def atomic_write(p, data, mode):
+    """同目录临时文件写完再 os.replace：中途失败不会留下半截文件"""
+    tmp = p.with_name(f".{p.name}.fileweb-{os.getpid()}.tmp")
+    try:
+        tmp.write_bytes(data)
+        os.chmod(tmp, mode & 0o7777)
+        os.replace(tmp, p)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -730,6 +741,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "不是文件"}, 400)
         if p.stat().st_size > MAX_EDIT_SIZE:
             return self._json({"error": f"文件超过 {human(MAX_EDIT_SIZE)}，不支持在线编辑"}, 400)
+        mtime = str(p.stat().st_mtime_ns)          # 先取 mtime 再读：竞态时只会多报冲突，不会漏报
         raw = p.read_bytes()
         if b"\x00" in raw:
             return self._json({"error": "二进制文件，无法编辑"}, 400)
@@ -738,7 +750,7 @@ class Handler(BaseHTTPRequestHandler):
             text, readonly = raw.decode("utf-8-sig"), False
         except UnicodeDecodeError:              # 非 UTF-8：只读展示，绝不写回
             text, readonly = raw.decode("utf-8-sig", errors="replace"), True
-        return self._json({"path": rel, "content": text.replace("\r\n", "\n"), "readonly": readonly})
+        return self._json({"path": rel, "content": text.replace("\r\n", "\n"), "readonly": readonly, "mtime": mtime})
 
     # ---------- POST ----------
     def do_POST(self):
@@ -766,8 +778,11 @@ class Handler(BaseHTTPRequestHandler):
                     orig.decode("utf-8")
                 except UnicodeDecodeError:
                     return self._json({"error": "非 UTF-8 文件，只读"}, 400)
-                p.write_bytes(restore_format(orig, data.get("content", "")))
-            return self._json({"ok": True})
+                st = p.stat()
+                if data.get("mtime") and not data.get("force") and data["mtime"] != str(st.st_mtime_ns):
+                    return self._json({"error": "文件已在别处被修改", "conflict": True}, 409)
+                atomic_write(p, restore_format(orig, data.get("content", "")), st.st_mode)
+            return self._json({"ok": True, "mtime": str(p.stat().st_mtime_ns)})
         if u.path == "/api/delete":
             return self.api_delete()
         if u.path == "/api/create":

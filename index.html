@@ -247,7 +247,7 @@ document.getElementById("back").innerHTML = SVG_CHEV_L;
 document.getElementById("refresh").innerHTML = SVG_REFRESH;
 document.getElementById("fwd").innerHTML = SVG_CHEV_R;
 
-let cur = "", curFile = "", savedVal = "";
+let cur = "", curFile = "", savedVal = "", curMtime = "";
 let hist = [""], hidx = 0;   // 浏览器式历史栈：进新目录 push，后退/前进移动指针
 
 // ---- 左滑删除 ----
@@ -493,6 +493,7 @@ async function open(path, name) {
   curFile = path;
   curName = name;
   ta.value = d.content;
+  curMtime = d.mtime || "";
   savedVal = ta.value;   // 以 textarea 归一化后的值为基准，避免换行差异误判为已修改
   ta.scrollTop = 0; ln.style.transform = "translateY(0)"; renderLN();
   const lower = name.toLowerCase();
@@ -529,14 +530,20 @@ function closeEd() {
   markActive();
 }
 
-async function save() {
+async function save(force) {
   if (ta.readOnly) return;
+  const val = ta.value;
   const d = await api("/api/file", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: curFile, content: ta.value })
+    body: JSON.stringify({ path: curFile, content: val, mtime: curMtime, force: !!force })
   });
-  if (d && d.ok) { savedVal = ta.value; updateDirty(); okFlash(); }
+  if (d && d.conflict) {                       // 磁盘上的文件在打开后被别处改过
+    if (confirm("文件已在别处被修改。覆盖保存？")) return save(true);
+    if (confirm("重新加载磁盘上的版本？（丢弃本地修改）")) { savedVal = ta.value; return open(curFile, curName); }
+    return;
+  }
+  if (d && d.ok) { savedVal = val; curMtime = d.mtime || ""; updateDirty(); okFlash(); }
   else fail("保存失败", d && d.error);
 }
 
