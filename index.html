@@ -139,6 +139,15 @@
   .rowacts { display: none; }
 
   /* ≥768：列表限宽居中 + 面包屑 */
+  /* 桌面「/」过滤框：默认隐藏，仅按 / 时出现 */
+  #filter { display: none; width: calc(100% - 32px); margin: 0 16px 12px; padding: 8px 12px; font: inherit;
+    font-size: 15px; color: var(--ink); background: var(--canvas); border: 1px solid rgba(0,0,0,.08);
+    border-radius: 10px; outline: none; }
+  #filter.on { display: block; }
+  #filter:focus { border-color: var(--primary); }
+  @media (min-width: 768px) { #filter { max-width: 760px; margin: 0 auto 12px; } }
+  @media (min-width: 1024px) { #filter { max-width: none; margin: 0 16px 12px; } }
+
   @media (min-width: 768px) {
     #crumbs, #bigtitle, .group, .empty { max-width: 760px; margin-left: auto; margin-right: auto; }
     #crumbs { display: block; padding: 12px 16px 0; font-size: 14px; color: var(--muted);
@@ -192,6 +201,7 @@
 </div>
 <div id="crumbs"></div>
 <h1 id="bigtitle">fileweb</h1>
+<input id="filter" placeholder="过滤当前目录" autocomplete="off" spellcheck="false">
 <div class="group" id="group"></div>
 <div class="empty" id="empty" hidden>此文件夹为空</div>
 <div class="safe-bottom"></div>
@@ -397,6 +407,7 @@ async function render(p) {
   renderCrumbs(p);
   const g = document.getElementById("group");
   g.innerHTML = "";
+  closeFilter();
   openRow = null;
   const es = d.entries.filter(e => showDot || !e.name.startsWith("."));   // 默认隐藏点文件
   document.getElementById("empty").hidden = es.length > 0;
@@ -626,6 +637,33 @@ function refresh() {
   open(curFile, curFile.split("/").pop());
 }
 document.getElementById("refresh").onclick = refresh;
+
+// ---- 桌面：按 / 过滤当前目录（纯前端；Esc 清除，Enter 打开第一项）。手机无入口 ----
+const filter = document.getElementById("filter");
+const mqDesk = matchMedia("(min-width: 1024px), (hover: hover) and (pointer: fine)");
+function closeFilter() { filter.value = ""; filter.classList.remove("on"); applyFilter(); }
+function applyFilter() {
+  const q = filter.value.trim().toLowerCase();
+  for (const w of document.querySelectorAll("#group .rowwrap")) {
+    const n = w.querySelector(".name").textContent.toLowerCase();
+    w.style.display = !q || n.includes(q) ? "" : "none";
+  }
+}
+filter.addEventListener("input", applyFilter);
+filter.addEventListener("keydown", e => {
+  if (e.key === "Escape") { e.stopPropagation(); closeFilter(); filter.blur(); }
+  else if (e.key === "Enter") {
+    const w = [...document.querySelectorAll("#group .rowwrap")].find(w => w.style.display !== "none");
+    if (w) { filter.blur(); w.querySelector(".row").click(); }
+  }
+});
+addEventListener("keydown", e => {
+  if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || !mqDesk.matches) return;
+  const tg = e.target.tagName;
+  if (tg === "INPUT" || tg === "TEXTAREA" || e.target.isContentEditable) return;
+  e.preventDefault();
+  filter.classList.add("on"); filter.focus(); filter.select();
+});
 
 addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
