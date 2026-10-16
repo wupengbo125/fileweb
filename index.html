@@ -34,7 +34,7 @@
   .nav .navbtn:active:not(:disabled) { opacity: .4; }
   .nav .navbtn:disabled { color: #c7c7cc; }
   .nav .title { flex: 1; text-align: center; font-size: 17px; font-weight: 600; overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    text-overflow: ellipsis; white-space: nowrap; }
 
   /* ---- 大标题 ---- */
   h1 { font-family: system-ui, -apple-system, "SF Pro Display", sans-serif;
@@ -50,38 +50,13 @@
     font-size: 17px; cursor: pointer; position: relative; z-index: 1; background: var(--canvas);
     touch-action: pan-y; -webkit-user-select: none; user-select: none; }
   .row:active { background: #eef4fc; }
-  .row.active { background: #eef4fc; }
   .delbar { position: absolute; top: 0; right: 0; bottom: 0; width: 76px; background: #ff3b30;
     color: #fff; font-size: 17px; display: flex; align-items: center; justify-content: center; }
-  .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .meta { font-size: 14px; letter-spacing: -0.224px; color: var(--muted); flex: none; }
   .row svg { flex: none; }
   .chev { color: #c7c7cc; flex: none; }
   .empty { margin: 0 16px; color: var(--muted); font-size: 15px; text-align: center; padding: 32px 0; }
-
-  /* 桌面行操作（默认隐藏，≥768 悬停显示） */
-  .rowacts { display: none; flex: none; gap: 4px; align-items: center; }
-  .rowacts button { background: none; border: 0; color: var(--primary); font: inherit; font-size: 14px;
-    padding: 6px 8px; border-radius: 8px; cursor: pointer; }
-  .rowacts button.danger { color: #ff3b30; }
-  .rowacts button:hover { background: rgba(0,102,204,.08); }
-  .rowacts button.danger:hover { background: rgba(255,59,48,.1); }
-
-  /* ---- 面包屑（桌面） ---- */
-  #crumbs { display: none; margin: 0 16px 8px; font-size: 14px; color: var(--muted);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #crumbs a { color: var(--primary); text-decoration: none; }
-  #crumbs a:hover { text-decoration: underline; }
-  #crumbs span.sep { margin: 0 6px; color: #c7c7cc; }
-
-  /* ---- 桌面工具栏（≥768 显示） ---- */
-  #toolbar { display: none; align-items: center; flex-wrap: wrap; gap: 2px;
-    padding: 6px 16px; border-bottom: 1px solid var(--hairline);
-    background: rgba(245,245,247,.9); }
-  #toolbar button { background: none; border: 0; color: var(--primary); font: inherit; font-size: 14px;
-    padding: 6px 10px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
-  #toolbar button:hover { background: rgba(0,102,204,.08); }
-  #toolbar button:active { opacity: .5; }
 
   /* ---- 编辑器 ---- */
   #editor { position: fixed; inset: 0; background: var(--canvas); display: none; flex-direction: column; z-index: 20; }
@@ -96,9 +71,8 @@
   #editor .save:focus { outline: 2px solid #0071e3; outline-offset: 2px; }
   #filename { position: fixed; top: calc(env(safe-area-inset-top) + 40px); left: 0; right: 0;
     text-align: center; font-size: 12px; letter-spacing: -0.12px; color: var(--muted); z-index: 21; pointer-events: none; }
-  #preview { flex: 1; width: 100%; height: 100%; border: 0; background: #fff; display: none; min-width: 0; min-height: 0; }
-  #edmain { flex: 1; display: flex; min-height: 0; flex-direction: column; }
-  #edbody { flex: 1; display: flex; min-height: 0; background: var(--canvas); min-width: 0; }
+  #preview { flex: 1; width: 100%; height: 100%; border: 0; background: #fff; display: none; }
+  #edbody { flex: 1; display: flex; min-height: 0; background: var(--canvas); }
   #gutter { flex: none; width: 44px; overflow: hidden; background: var(--parchment);
     border-right: 1px solid var(--hairline); }
   #gutter pre { margin: 0; padding: 44px 8px 16px 0; text-align: right; color: var(--muted);
@@ -107,8 +81,6 @@
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 16px; line-height: 1.6;
     letter-spacing: 0; white-space: pre; overflow: auto; resize: none; }
   textarea:focus { outline: none; }
-  #edempty { display: none; flex: 1; align-items: center; justify-content: center;
-    color: var(--muted); font-size: 15px; }
 
   /* ---- 上传悬浮按钮 ---- */
   .fab { position: fixed; right: 21px; bottom: calc(env(safe-area-inset-bottom) - 10px);
@@ -158,63 +130,51 @@
 
   .safe-bottom { height: env(safe-area-inset-bottom); }
 
-  /* ========== ≥768：中屏 —— 列表限宽 + 工具栏 ========== */
+  /* ---- 桌面增强：默认隐藏，仅在宽屏启用；<768 完全保持原样 ---- */
+  #crumbs { display: none; }
+  #edempty { display: none; }
+  .rowacts { display: none; }
+
+  /* ≥768：列表限宽居中 + 面包屑 */
   @media (min-width: 768px) {
-    #bigtitle, .group, .empty, #crumbs {
-      max-width: 760px; margin-left: auto; margin-right: auto;
-    }
-    #crumbs { display: block; padding: 12px 16px 0; margin-bottom: 0; }
-    #toolbar { display: flex; max-width: 760px; margin: 0 auto; width: 100%;
-      border-bottom: 0; background: transparent; padding: 8px 16px 0; }
-    .fab, .mask, .menu { display: none !important; }
-    .row .chev { display: none; }
-    .rowacts { display: none; }
-    .rowwrap:hover .rowacts, .row.active .rowacts { display: flex; }
+    #crumbs, #bigtitle, .group, .empty { max-width: 760px; margin-left: auto; margin-right: auto; }
+    #crumbs { display: block; padding: 12px 16px 0; font-size: 14px; color: var(--muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #crumbs a { color: var(--primary); text-decoration: none; cursor: pointer; }
+    #crumbs a:hover { text-decoration: underline; }
+    #crumbs .sep { margin: 0 6px; color: #c7c7cc; }
+    #bigtitle { padding: 0 16px; }
+    #bigtitle { margin-top: 12px; }
+  }
+  /* 鼠标设备悬停显示行内 重命名/删除（触控仍用左滑/长按） */
+  @media (min-width: 768px) and (hover: hover) and (pointer: fine) {
     .row:hover { background: #f5f5f7; }
-    .row:active { background: #eef4fc; }
-    .delbar { display: none; } /* 桌面用行内按钮，不用左滑条 */
+    .row:hover .rowacts { display: flex; }
+    .row:hover .meta { display: none; }   /* 腾位置给按钮，文件名不被挤没 */
+    .rowacts { flex: none; gap: 2px; }
+    .rowacts button { background: none; border: 0; font: inherit; font-size: 14px; color: var(--primary);
+      padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+    .rowacts button:hover { background: rgba(0,102,204,.08); }
+    .rowacts button.danger { color: #ff3b30; }
   }
 
-  /* ========== ≥1024：大屏 —— 左列表 | 右编辑 ========== */
+  /* ≥1024：左列表 | 右编辑器。列表沿用窗口滚动，编辑器固定在右侧 */
   @media (min-width: 1024px) {
-    html, body { height: 100%; overflow: hidden; }
-    body { display: flex; flex-direction: row; }
-    #listpane {
-      flex: none; width: 360px; height: 100%; overflow: auto;
-      border-right: 1px solid var(--hairline); background: var(--parchment);
-      display: flex; flex-direction: column;
-    }
-    #listpane .nav { flex: none; }
-    #toolbar { max-width: none; margin: 0; width: auto; flex: none;
-      border-bottom: 1px solid var(--hairline); background: rgba(245,245,247,.9);
-      padding: 6px 12px; }
-    #bigtitle, .group, .empty, #crumbs {
-      max-width: none; margin-left: 16px; margin-right: 16px;
-    }
-    #crumbs { margin-left: 16px; margin-right: 16px; padding: 10px 0 0; }
-    #bigtitle { margin-top: 16px; font-size: 28px; }
-    .group { margin-bottom: 24px; }
-    #editor {
-      position: relative; inset: auto; flex: 1; height: 100%;
-      display: flex; z-index: 5; border: 0;
-    }
-    #editor:not(.open) > .nav,
-    #editor:not(.open) #filename,
-    #editor:not(.open) #edmain { display: none; }
-    #editor:not(.open) #edempty { display: flex; }
-    #filename {
-      position: absolute; top: calc(env(safe-area-inset-top) + 40px);
-      left: 0; right: 0;
-    }
-    .safe-bottom { display: none; }
-  }
-
-  /* ========== ≥1440：源码 | 预览并排 ========== */
-  @media (min-width: 1440px) {
-    #listpane { width: 380px; }
-    #editor.split #edmain { flex-direction: row; }
-    #editor.split #edbody { display: flex !important; flex: 1; border-right: 1px solid var(--hairline); }
-    #editor.split #preview { display: block !important; flex: 1; }
+    :root { --listw: 360px; }
+    #listpane { width: var(--listw); min-height: 100vh; border-right: 1px solid var(--hairline); }
+    #crumbs, #bigtitle, .group, .empty { max-width: none; }
+    #crumbs { margin: 0 16px; padding: 12px 0 0; }
+    #bigtitle { margin: 12px 16px 12px; padding: 0; font-size: 28px; }
+    .group { margin: 0 16px 24px; }
+    .empty { margin: 0 16px; }
+    .row.active { background: #eef4fc; }
+    #editor, #edempty { left: var(--listw); border-left: 0; }
+    #edempty { position: fixed; top: 0; right: 0; bottom: 0; display: flex; align-items: center;
+      justify-content: center; color: var(--muted); font-size: 15px; background: var(--canvas); z-index: 1; }
+    #filename { left: var(--listw); }
+    .fab { right: auto; left: calc(var(--listw) - 21px - 56px); }
+    .menu { right: auto; left: calc(var(--listw) - 20px - 190px); }
+    .mask { z-index: 22; } .menu { z-index: 24; } .fab { z-index: 23; }
   }
 </style>
 </head>
@@ -227,20 +187,13 @@
   <button class="navbtn" id="refresh" aria-label="刷新"></button>
   <button class="navbtn" id="fwd" aria-label="前进" disabled></button>
 </div>
-<div id="toolbar">
-  <button type="button" id="tbNewDir" title="新建文件夹">新建文件夹</button>
-  <button type="button" id="tbNewFile" title="新建文件">新建文件</button>
-  <button type="button" id="tbUpload" title="上传">上传</button>
-  <button type="button" id="tbDeploy" title="同步项目包">同步包</button>
-  <button type="button" id="tbSync" title="同步 GitHub">同步 GitHub</button>
-</div>
-<nav id="crumbs" aria-label="路径"></nav>
+<div id="crumbs"></div>
 <h1 id="bigtitle">fileweb</h1>
 <div class="group" id="group"></div>
 <div class="empty" id="empty" hidden>此文件夹为空</div>
 <div class="safe-bottom"></div>
 </div>
-
+<div id="edempty">选择左侧文件以编辑</div>
 <button class="fab" id="fab" aria-label="更多">
   <svg width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" d="M12 5v14M5 12h14"/></svg>
 </button>
@@ -263,13 +216,10 @@
     <button class="save" id="saveBtn" onclick="save()">保存</button>
   </div>
   <div id="filename"></div>
-  <div id="edempty">选择左侧文件以编辑</div>
-  <div id="edmain">
-    <iframe id="preview"></iframe>
-    <div id="edbody">
-      <div id="gutter"><pre id="ln"></pre></div>
-      <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
-    </div>
+  <iframe id="preview"></iframe>
+  <div id="edbody">
+    <div id="gutter"><pre id="ln"></pre></div>
+    <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
   </div>
 </div>
 <div id="toast"></div>
@@ -300,12 +250,6 @@ document.getElementById("fwd").innerHTML = SVG_CHEV_R;
 let cur = "", curFile = "", savedVal = "";
 let hist = [""], hidx = 0;   // 浏览器式历史栈：进新目录 push，后退/前进移动指针
 
-const mqDesk = matchMedia("(min-width: 1024px)");
-const mqWide = matchMedia("(min-width: 1440px)");
-const mqMid = matchMedia("(min-width: 768px)");
-const isDesk = () => mqDesk.matches;
-const isWide = () => mqWide.matches;
-
 // ---- 左滑删除 ----
 const DEL_W = 76;
 let openRow = null;
@@ -326,16 +270,9 @@ function bindSwipe(row, path, name) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     id = e.pointerId; x0 = e.clientX; y0 = e.clientY; dx = 0; axis = null;
     lp = setTimeout(() => { lp = null; row.longpressed = true; rename(path, name); }, 600);
-    // ≥768：只保留长按重命名，不做左滑
-    if (mqMid.matches) return;
   });
   row.addEventListener("pointermove", e => {
     if (id === null || e.pointerId !== id) return;
-    if (mqMid.matches) {
-      const mx = e.clientX - x0, my = e.clientY - y0;
-      if (Math.abs(mx) > 6 || Math.abs(my) > 6) cancelLP();
-      return;
-    }
     const mx = e.clientX - x0, my = e.clientY - y0;
     if (axis === null) {
       if (Math.abs(mx) < 6 && Math.abs(my) < 6) return;
@@ -355,7 +292,6 @@ function bindSwipe(row, path, name) {
   const end = e => {
     if (id === null || e.pointerId !== id) return;
     cancelLP();
-    if (mqMid.matches) { id = null; axis = null; return; }
     const wasX = axis === "x";
     id = null; axis = null;
     if (!wasX) return;
@@ -394,10 +330,7 @@ async function rename(path, name) {
   });
   if (!d || !d.ok) { if (d && d.error) fail("重命名失败", d.error); return; }
   toast("已重命名为 " + d.path.split("/").pop());
-  if (curFile === path) {
-    curFile = d.path;
-    document.getElementById("filename").textContent = d.path.split("/").pop();
-  }
+  if (curFile === path) { curFile = d.path; document.getElementById("filename").textContent = d.path.split("/").pop(); }
   render(cur);
 }
 
@@ -405,25 +338,6 @@ function updateNav() {
   document.getElementById("back").disabled = hidx <= 0;
   document.getElementById("fwd").disabled = hidx >= hist.length - 1;
 }
-
-function updateCrumbs(p) {
-  const el = document.getElementById("crumbs");
-  const parts = p ? p.split("/") : [];
-  let html = `<a href="#" data-path="">fileweb</a>`;
-  let acc = "";
-  for (const seg of parts) {
-    acc = acc ? acc + "/" + seg : seg;
-    html += `<span class="sep">/</span><a href="#" data-path="${esc(acc)}">${esc(seg)}</a>`;
-  }
-  el.innerHTML = html;
-}
-
-document.getElementById("crumbs").onclick = e => {
-  const a = e.target.closest("a[data-path]");
-  if (!a) return;
-  e.preventDefault();
-  navigate(a.getAttribute("data-path"));
-};
 
 async function api(url, opt) {
   const r = await fetch(url, opt);
@@ -434,12 +348,23 @@ async function api(url, opt) {
 const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const rel = (p, n) => p ? p + "/" + n : n;
 
-function markActiveRow() {
-  document.querySelectorAll(".row.active").forEach(r => r.classList.remove("active"));
-  if (!curFile) return;
-  document.querySelectorAll(".row").forEach(row => {
-    if (row.dataset.path === curFile) row.classList.add("active");
-  });
+function renderCrumbs(p) {
+  const el = document.getElementById("crumbs");
+  let html = '<a data-path="">fileweb</a>', acc = "";
+  for (const seg of p ? p.split("/") : []) {
+    acc = acc ? acc + "/" + seg : seg;
+    html += '<span class="sep">/</span><a data-path="' + esc(acc) + '">' + esc(seg) + '</a>';
+  }
+  el.innerHTML = html;
+}
+document.getElementById("crumbs").onclick = e => {
+  const a = e.target.closest("a[data-path]");
+  if (a) navigate(a.getAttribute("data-path"));
+};
+
+function markActive() {
+  for (const r of document.querySelectorAll("#group .row"))
+    r.classList.toggle("active", !!curFile && r.dataset.path === curFile);
 }
 
 async function render(p) {
@@ -449,7 +374,7 @@ async function render(p) {
   const name = p ? p.split("/").pop() : "fileweb";
   document.getElementById("title").textContent = name;
   document.getElementById("bigtitle").textContent = name;
-  updateCrumbs(p);
+  renderCrumbs(p);
   const g = document.getElementById("group");
   g.innerHTML = "";
   openRow = null;
@@ -461,42 +386,35 @@ async function render(p) {
     const del = document.createElement("div");
     del.className = "delbar";
     del.textContent = "删除";
-    const full = rel(p, e.name);
-    del.onclick = () => remove(full, e.name, wrap);
+    del.onclick = () => remove(rel(p, e.name), e.name, wrap);
     const row = document.createElement("div");
     row.className = "row";
-    row.dataset.path = full;
-    const acts = document.createElement("div");
-    acts.className = "rowacts";
-    const bRen = document.createElement("button");
-    bRen.type = "button";
-    bRen.textContent = "重命名";
-    bRen.onclick = ev => { ev.stopPropagation(); rename(full, e.name); };
-    const bDel = document.createElement("button");
-    bDel.type = "button";
-    bDel.className = "danger";
-    bDel.textContent = "删除";
-    bDel.onclick = ev => { ev.stopPropagation(); remove(full, e.name, wrap); };
-    acts.append(bRen, bDel);
+    row.dataset.path = rel(p, e.name);
     row.innerHTML = (e.type === "dir" ? SVG_FOLDER : SVG_DOC) +
       `<span class="name">${esc(e.name)}</span>` +
       (e.type === "file" ? `<span class="meta">${e.mtime}${e.size ? " · " + e.size : ""}</span>` : "") +
+      '<span class="rowacts"><button class="ren">重命名</button><button class="danger">删除</button></span>' +
       SVG_CHEV;
-    row.appendChild(acts);
+    const acts = row.querySelector(".rowacts");
+    acts.addEventListener("pointerdown", ev => ev.stopPropagation());   // 不触发长按/左滑
+    acts.querySelector(".ren").onclick = ev => { ev.stopPropagation(); rename(rel(p, e.name), e.name); };
+    acts.querySelector(".danger").onclick = ev => {
+      ev.stopPropagation();
+      if (confirm("删除 " + e.name + "？")) remove(rel(p, e.name), e.name, wrap);
+    };
     row.onclick = () => {
       if (row.longpressed) { row.longpressed = false; return; }   // 长按刚弹过重命名
       if (row.swiped) { row.swiped = false; return; }
       if (openRow) return closeRow();           // 有行开着：这一下只用来收起
-      e.type === "dir" ? navigate(full) : open(full, e.name);
+      e.type === "dir" ? navigate(rel(p, e.name)) : open(rel(p, e.name), e.name);
     };
-    bindSwipe(row, full, e.name);
+    bindSwipe(row, rel(p, e.name), e.name);
     wrap.append(del, row);
     g.appendChild(wrap);
   }
-  markActiveRow();
+  markActive();
   updateNav();
-  if (!isDesk()) scrollTo(0, 0);
-  else document.getElementById("listpane").scrollTop = 0;
+  scrollTo(0, 0);
 }
 
 function navigate(p) {
@@ -533,21 +451,7 @@ ta.addEventListener("keydown", e => {                    // Ctrl+X 无选区：�
 
 let isPreview = false;
 
-function resetPreviewUI() {
-  const ed = document.getElementById("editor");
-  const edbody = document.getElementById("edbody");
-  const frame = document.getElementById("preview");
-  ed.classList.remove("split");
-  frame.src = "about:blank";
-  frame.style.display = "none";
-  edbody.style.display = "flex";
-  document.getElementById("previewBtn").textContent = "预览";
-  document.getElementById("saveBtn").hidden = false;
-  isPreview = false;
-}
-
 async function togglePreview() {
-  const ed = document.getElementById("editor");
   const edbody = document.getElementById("edbody");
   const frame = document.getElementById("preview");
   const pBtn = document.getElementById("previewBtn");
@@ -557,23 +461,18 @@ async function togglePreview() {
       await save();
     }
     frame.src = "/raw/" + curFile.split("/").map(encodeURIComponent).join("/") + "?t=" + Date.now();
-    if (isWide()) {
-      // 超宽：源码 | 预览并排
-      ed.classList.add("split");
-      edbody.style.display = "flex";
-      frame.style.display = "block";
-      pBtn.textContent = "仅源码";
-      sBtn.hidden = false;
-    } else {
-      ed.classList.remove("split");
-      edbody.style.display = "none";
-      frame.style.display = "block";
-      pBtn.textContent = "源码";
-      sBtn.hidden = true;
-    }
+    edbody.style.display = "none";
+    frame.style.display = "block";
+    pBtn.textContent = "源码";
+    sBtn.hidden = true;
     isPreview = true;
   } else {
-    resetPreviewUI();
+    frame.src = "about:blank";
+    frame.style.display = "none";
+    edbody.style.display = "flex";
+    pBtn.textContent = "预览";
+    sBtn.hidden = false;
+    isPreview = false;
   }
 }
 
@@ -589,64 +488,31 @@ async function open(path, name) {
   const previewable = lower.endsWith(".html") || lower.endsWith(".htm")
     || lower.endsWith(".md") || lower.endsWith(".markdown");
   document.getElementById("previewBtn").hidden = !previewable;
-  if (isPreview) resetPreviewUI();
-  const ed = document.getElementById("editor");
-  ed.classList.add("open");
-  ed.style.display = "flex";
-  markActiveRow();
+  if (isPreview) {
+    document.getElementById("preview").src = "about:blank";
+    document.getElementById("preview").style.display = "none";
+    document.getElementById("edbody").style.display = "flex";
+    document.getElementById("previewBtn").textContent = "预览";
+    document.getElementById("saveBtn").hidden = false;
+    isPreview = false;
+  }
+  document.getElementById("editor").style.display = "flex";
+  markActive();
 }
 
 function closeEd() {
-  if (isPreview) resetPreviewUI();
-  const ed = document.getElementById("editor");
-  ed.classList.remove("open");
-  if (isDesk()) {
-    ed.style.display = "flex"; // 大屏保留右栏空态
-  } else {
-    ed.style.display = "none";
+  if (isPreview) {
+    document.getElementById("preview").src = "about:blank";
+    document.getElementById("preview").style.display = "none";
+    document.getElementById("edbody").style.display = "flex";
+    document.getElementById("previewBtn").textContent = "预览";
+    document.getElementById("saveBtn").hidden = false;
+    isPreview = false;
   }
+  document.getElementById("editor").style.display = "none";
   curFile = "";
-  markActiveRow();
+  markActive();
 }
-
-function syncEditorLayout() {
-  const ed = document.getElementById("editor");
-  if (isDesk()) {
-    ed.style.display = "flex";
-    if (!curFile) ed.classList.remove("open");
-  } else {
-    if (!curFile) {
-      ed.classList.remove("open");
-      ed.style.display = "none";
-    }
-    ed.classList.remove("split");
-    if (isPreview && !isWide()) {
-      // 从超宽缩回：保持互斥预览
-      document.getElementById("edbody").style.display = "none";
-      document.getElementById("preview").style.display = "block";
-      document.getElementById("previewBtn").textContent = "源码";
-      document.getElementById("saveBtn").hidden = true;
-    }
-  }
-  // 若在超宽分栏预览中缩到非超宽，切回互斥
-  if (isPreview && curFile) {
-    if (isWide()) {
-      ed.classList.add("split");
-      document.getElementById("edbody").style.display = "flex";
-      document.getElementById("preview").style.display = "block";
-      document.getElementById("previewBtn").textContent = "仅源码";
-      document.getElementById("saveBtn").hidden = false;
-    } else if (ed.classList.contains("split")) {
-      ed.classList.remove("split");
-      document.getElementById("edbody").style.display = "none";
-      document.getElementById("preview").style.display = "block";
-      document.getElementById("previewBtn").textContent = "源码";
-      document.getElementById("saveBtn").hidden = true;
-    }
-  }
-}
-mqDesk.addEventListener("change", syncEditorLayout);
-mqWide.addEventListener("change", syncEditorLayout);
 
 async function save() {
   const d = await api("/api/file", {
@@ -673,10 +539,6 @@ addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
     e.preventDefault();          // 拦掉浏览器的“保存网页”
     if (curFile) save();
-  }
-  if (e.key === "Escape" && curFile) {
-    if (document.activeElement === ta) ta.blur();
-    else closeEd();
   }
 });
 
@@ -717,7 +579,7 @@ document.getElementById("fwd").onclick = () => {
   if (hidx < hist.length - 1) { hidx++; render(hist[hidx]); }
 };
 
-// ---- 加号菜单 + 桌面工具栏 ----
+// ---- 加号菜单 ----
 const fab = document.getElementById("fab"), fileinp = document.getElementById("fileinp"), zipinp = document.getElementById("zipinp");
 const menu = document.getElementById("menu"), mask = document.getElementById("mask");
 const showMenu = v => { menu.hidden = mask.hidden = !v; };
@@ -728,11 +590,6 @@ document.getElementById("miNewFile").onclick = () => create("file");
 document.getElementById("miUpload").onclick = () => { showMenu(false); fileinp.click(); };
 document.getElementById("miDeploy").onclick = () => { showMenu(false); zipinp.click(); };
 document.getElementById("miSync").onclick = () => { showMenu(false); sync(); };
-document.getElementById("tbNewDir").onclick = () => create("dir");
-document.getElementById("tbNewFile").onclick = () => create("file");
-document.getElementById("tbUpload").onclick = () => fileinp.click();
-document.getElementById("tbDeploy").onclick = () => zipinp.click();
-document.getElementById("tbSync").onclick = () => sync();
 
 async function create(kind) {
   showMenu(false);
@@ -794,7 +651,6 @@ zipinp.onchange = async () => {
   else if (d) fail("同步失败", d.error, d.log);
 };
 
-syncEditorLayout();
 render("");
 </script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js', {scope:'/'});</script>
