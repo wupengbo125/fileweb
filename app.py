@@ -582,6 +582,16 @@ button:active{transform:scale(.95)}
         "<script>if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js',{scope:'/'})</script>"
 
 
+def restore_format(orig, text):
+    """按原文件格式编码：保留 UTF-8 BOM；原文件以 CRLF 为主则换行还原为 CRLF"""
+    bom = orig.startswith(b"\xef\xbb\xbf")
+    crlf = orig.count(b"\r\n") * 2 > orig.count(b"\n")
+    text = text.lstrip("\ufeff").replace("\r\n", "\n")
+    if crlf:
+        text = text.replace("\n", "\r\n")
+    return (b"\xef\xbb\xbf" if bom else b"") + text.encode("utf-8")
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -723,7 +733,9 @@ class Handler(BaseHTTPRequestHandler):
         raw = p.read_bytes()
         if b"\x00" in raw:
             return self._json({"error": "二进制文件，无法编辑"}, 400)
-        return self._json({"path": rel, "content": raw.decode("utf-8", errors="replace")})
+        # 去 BOM、CRLF→LF：与 textarea 归一化后的值一致，保存时再按原文件格式还原
+        text = raw.decode("utf-8-sig", errors="replace").replace("\r\n", "\n")
+        return self._json({"path": rel, "content": text})
 
     # ---------- POST ----------
     def do_POST(self):
@@ -746,7 +758,7 @@ class Handler(BaseHTTPRequestHandler):
             if not p.is_file():
                 return self._json({"error": "不是文件"}, 400)
             with _LOCK:
-                p.write_text(data.get("content", ""), encoding="utf-8")
+                p.write_bytes(restore_format(p.read_bytes(), data.get("content", "")))
             return self._json({"ok": True})
         if u.path == "/api/delete":
             return self.api_delete()
