@@ -482,7 +482,7 @@ async function open(path, name) {
   curFile = path;
   document.getElementById("filename").textContent = name;
   ta.value = d.content;
-  savedVal = d.content;
+  savedVal = ta.value;   // 以 textarea 归一化后的值为基准，避免换行差异误判为已修改
   ta.scrollTop = 0; ln.style.transform = "translateY(0)"; renderLN();
   const lower = name.toLowerCase();
   const previewable = lower.endsWith(".html") || lower.endsWith(".htm")
