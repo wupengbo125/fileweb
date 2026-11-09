@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -115,7 +116,8 @@ def sync_repo(root):
 def deploy_zip(name, data):
     """把 <name>.zip 覆盖式解压进暂存仓 STAGE_BASE/<name> → 提交推送 →
     真仓 ROOT/<name> ff-only 拉取；返回 (ok, 错误信息, log)。
-    暂存仓不存在时从真仓拷 .git 建出来，之后一直复用"""
+    暂存仓不存在时从真仓拷 .git 建出来，之后一直复用。
+    顶层同名目录 X 取 X 的内容替换（不嵌套 X/X）；__MACOSX、.DS_Store 不进仓"""
     log = []
     stage, real = STAGE_BASE / name, ROOT / name
     try:
@@ -137,30 +139,44 @@ def deploy_zip(name, data):
                 segs = item.split("/")
                 if item.startswith("/") or ".." in segs or ".git" in segs:
                     return False, f"压缩包内含非法路径: {item}", log
-            for p in stage.iterdir():        # 校验通过才清空工作区，只留 .git
-                if p.name == ".git":
-                    continue
-                if p.is_dir() and not p.is_symlink():
-                    shutil.rmtree(p)
+            tmp = Path(tempfile.mkdtemp(prefix=f".{name}.deploy-", dir=STAGE_BASE))
+            try:
+                z.extractall(tmp)            # 解压进临时目录，全程不动仓
+                for zi in z.infolist():      # extractall 不还原权限位，执行位会丢
+                    mode = (zi.external_attr >> 16) & 0o777
+                    if zi.create_system == 3 and mode:
+                        os.chmod(tmp / zi.filename, mode)
+                for junk in ("__MACOSX", ".DS_Store"):   # macOS 打包垃圾不进仓
+                    if junk == name:                     # 项目名恰好同名，不是垃圾
+                        continue
+                    p = tmp / junk
+                    if p.is_dir() and not p.is_symlink():
+                        shutil.rmtree(p)
+                    elif p.is_symlink() or p.exists():
+                        p.unlink()
+                # 定主体内容：同名目录 X > 单一顶层目录（GitHub 包）> zip 根
+                x, tops = tmp / name, list(tmp.iterdir())
+                if x.is_dir():
+                    src, others = x, [p for p in tops if p.name != name]
+                elif len(tops) == 1 and tops[0].is_dir():
+                    src, others = tops[0], []
                 else:
-                    p.unlink()
-            z.extractall(stage)
-            for zi in z.infolist():          # extractall 不还原权限位，执行位会丢
-                mode = (zi.external_attr >> 16) & 0o777
-                if zi.create_system == 3 and mode:
-                    os.chmod(stage / zi.filename, mode)
+                    src, others = tmp, []
+                for o in others:            # 其余顶层条目也是包的一部分，撞名以主体为准
+                    t = src / o.name
+                    if t.is_symlink() or t.exists():
+                        continue
+                    shutil.move(str(o), str(t))
+                shutil.move(str(stage / ".git"), str(src / ".git"))
+                shutil.rmtree(stage)        # 旧工作区整体删掉（.git 已带进新树）
+                os.rename(src, stage)       # 整目录换根，无逐条搬动
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as e:
         # RuntimeError：加密包；NotImplementedError：未知压缩法
         return False, f"不是有效的 zip: {e}", log
     except subprocess.TimeoutExpired:
         return False, "同步超时", log
-
-    items = [p for p in stage.iterdir() if p.name != ".git"]
-    if len(items) == 1 and items[0].is_dir():    # 拆平：包内只有一个顶层目录
-        top = items[0]
-        for p in top.iterdir():
-            shutil.move(str(p), str(stage / p.name))
-        top.rmdir()
 
     try:
         code, out = git(stage, "add", "-A")

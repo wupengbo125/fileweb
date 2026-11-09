@@ -84,7 +84,7 @@ Restart=always
 | POST | `/api/sync` | `{path}` | 同步 `path` 所在 Git 仓库：pull → commit → push；在根目录时并发同步其下所有仓库。返回 `{ok, repo, log}` 或 `{error, log}` |
 | POST | `/api/deploy` | multipart：`file`（`<项目名>.zip`） | 覆盖式解压进 `ONE_SYNC_BASE/<项目名>` → 提交推送 → `ONE_FILES_ROOT/<项目名>` ff-only 拉取；上限 200MB。返回 `{ok, log}` 或 `{error, log}` |
 
-zip 文件名（去掉 `.zip`）就是项目名，真仓取 `ONE_FILES_ROOT/<项目名>`；暂存仓不存在时从真仓拷 `.git` 建出来。
+zip 文件名（去掉 `.zip`）就是项目名，真仓取 `ONE_FILES_ROOT/<项目名>`；暂存仓不存在时从真仓拷 `.git` 建出来。zip 顶层的同名目录会展开替换（不嵌套），`__MACOSX` / `.DS_Store` 不进仓。
 
 ## License
 
